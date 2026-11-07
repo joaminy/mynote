@@ -7,10 +7,10 @@
  * 예)  apiKey: "AIzaSyB...",
  */
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyB-예시값-1234567890",
-  authDomain: "mynote-12345.firebaseapp.com",
-  projectId: "mynote-12345",
-  storageBucket: "mynote-12345.firebasestorage.app",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef1234567890"
+  apiKey: "AIzaSyB0X8uT7hXo-BTgCbKZ5su8ZB9IHslZiyw",
+  authDomain: "mynote-be052.firebaseapp.com",
+  projectId: "mynote-be052",
+  storageBucket: "mynote-be052.firebasestorage.app",
+  messagingSenderId: "265350472770",
+  appId: "1:265350472770:web:6afe715b2b8582778479db"
 };
