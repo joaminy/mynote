@@ -1,0 +1,16 @@
+{
+  "name": "마이노트",
+  "short_name": "마이노트",
+  "description": "PC와 휴대폰에서 함께 쓰는 나만의 메모 앱",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F6F6F4",
+  "theme_color": "#F08A24",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>마이노트</title>
+<meta name="description" content="PC와 휴대폰에서 함께 쓰는 나만의 메모 앱">
+<meta name="theme-color" content="#F08A24">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="마이노트">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&family=Nanum+Gothic:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Dodum&family=Nanum+Pen+Script&family=Gaegu:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 로그인 화면 (Firebase 연동 모드에서만 보임) -->
+<section id="loginView" class="login hidden">
+  <div class="login-card">
+    <img src="icons/icon-192.png" alt="" class="login-logo">
+    <h1>마이노트</h1>
+    <p class="login-sub">PC와 휴대폰에서 같은 계정으로 로그인하면 노트가 연동됩니다.</p>
+    <label class="field"><span>이메일</span><input id="loginEmail" type="email" autocomplete="email" inputmode="email"></label>
+    <label class="field"><span>비밀번호 (6자 이상)</span><input id="loginPw" type="password" autocomplete="current-password"></label>
+    <p id="loginMsg" class="login-msg" role="alert"></p>
+    <button id="loginBtn" class="btn primary wide">로그인</button>
+    <button id="signupBtn" class="btn wide">새 계정 만들기</button>
+    <button id="resetBtn" class="link-btn">비밀번호를 잊으셨나요?</button>
+  </div>
+</section>
+
+<!-- 시작 중 / 오류 화면 -->
+<section id="bootView" class="login">
+  <div class="login-card"><img src="icons/icon-192.png" alt="" class="login-logo"><p id="bootMsg">마이노트를 여는 중…</p></div>
+</section>
+
+<div id="mainView" class="main hidden">
+  <!-- 왼쪽 메뉴 -->
+  <aside id="drawer" class="drawer" aria-label="폴더">
+    <div class="drawer-head">
+      <span class="brand">마이노트</span>
+      <button class="icon-btn" id="settingsBtn" title="설정" aria-label="설정"></button>
+    </div>
+    <nav id="drawerNav" class="drawer-nav"></nav>
+    <div class="drawer-foot" id="drawerFoot"></div>
+  </aside>
+  <div id="scrim" class="scrim"></div>
+
+  <!-- 노트 목록 -->
+  <section id="listView" class="list-pane">
+    <header class="topbar">
+      <button class="icon-btn" id="menuBtn" title="메뉴" aria-label="메뉴"></button>
+      <h1 id="viewTitle" class="view-title">모든 노트</h1>
+      <button class="icon-btn" id="searchBtn" title="검색" aria-label="검색"></button>
+      <button class="icon-btn" id="layoutBtn" title="보기 방식" aria-label="보기 방식"></button>
+      <button class="icon-btn" id="sortBtn" title="정렬" aria-label="정렬"></button>
+    </header>
+    <div id="searchBar" class="search-bar hidden">
+      <input id="searchInput" type="search" placeholder="모든 노트에서 검색" autocomplete="off">
+    </div>
+    <div class="list-sub">
+      <span id="countLabel"></span>
+      <span id="syncPill" class="sync-pill"></span>
+    </div>
+    <div id="trashBar" class="trash-bar hidden">
+      <span>휴지통의 노트는 30일 뒤 자동으로 삭제됩니다.</span>
+      <button id="emptyTrashBtn" class="btn small">비우기</button>
+    </div>
+    <div id="noteList" class="note-list grid"></div>
+    <p id="emptyMsg" class="empty-msg hidden"></p>
+    <button id="fab" class="fab" title="새 노트" aria-label="새 노트"></button>
+  </section>
+
+  <!-- 노트 편집 -->
+  <section id="editorView" class="editor-pane">
+    <div id="editorEmpty" class="editor-empty">노트를 고르거나 + 버튼으로 새 노트를 만드세요.</div>
+    <div id="editorBox" class="editor-box hidden">
+      <header class="topbar editor-top">
+        <button class="icon-btn" id="backBtn" title="목록으로" aria-label="목록으로"></button>
+        <span class="spacer"></span>
+        <button class="icon-btn" id="undoBtn" title="실행 취소" aria-label="실행 취소"></button>
+        <button class="icon-btn" id="redoBtn" title="다시 실행" aria-label="다시 실행"></button>
+        <button class="icon-btn" id="favBtn" title="즐겨찾기" aria-label="즐겨찾기"></button>
+        <button class="icon-btn" id="attachBtn" title="파일 첨부" aria-label="파일 첨부"></button>
+        <button class="icon-btn" id="noteMoreBtn" title="더보기" aria-label="더보기"></button>
+      </header>
+      <div id="editorScroll" class="editor-scroll">
+        <input id="noteTitle" class="note-title" placeholder="제목" autocomplete="off">
+        <div class="note-meta">
+          <select id="noteFolder" aria-label="폴더"></select>
+          <span id="noteDate"></span>
+        </div>
+        <div id="attachList" class="attach-list"></div>
+        <div id="editor" class="editor" contenteditable="true" spellcheck="false" data-placeholder="내용을 입력하세요"></div>
+      </div>
+      <div id="toolbar" class="toolbar" role="toolbar" aria-label="서식">
+        <select id="fontSel" title="글꼴" aria-label="글꼴"></select>
+        <select id="sizeSel" title="글자 크기" aria-label="글자 크기"></select>
+        <span class="tb-sep"></span>
+        <button class="tb" data-cmd="bold" title="굵게" aria-label="굵게"></button>
+        <button class="tb" data-cmd="italic" title="기울임" aria-label="기울임"></button>
+        <button class="tb" data-cmd="underline" title="밑줄" aria-label="밑줄"></button>
+        <button class="tb" data-cmd="strikeThrough" title="취소선" aria-label="취소선"></button>
+        <span class="tb-sep"></span>
+        <button class="tb" id="colorBtn" title="글자 색" aria-label="글자 색"></button>
+        <button class="tb" id="hiliteBtn" title="형광펜" aria-label="형광펜"></button>
+        <span class="tb-sep"></span>
+        <button class="tb" data-cmd="justifyLeft" title="왼쪽 정렬" aria-label="왼쪽 정렬"></button>
+        <button class="tb" data-cmd="justifyCenter" title="가운데 정렬" aria-label="가운데 정렬"></button>
+        <button class="tb" data-cmd="justifyRight" title="오른쪽 정렬" aria-label="오른쪽 정렬"></button>
+        <span class="tb-sep"></span>
+        <button class="tb" id="checkBtn" title="체크리스트" aria-label="체크리스트"></button>
+        <button class="tb" id="ulBtn" title="글머리 기호" aria-label="글머리 기호"></button>
+        <button class="tb" data-cmd="insertOrderedList" title="번호 매기기" aria-label="번호 매기기"></button>
+        <button class="tb" id="clearBtn" title="서식 지우기" aria-label="서식 지우기"></button>
+      </div>
+      <div id="palette" class="palette hidden"></div>
+      <input type="file" id="fileInput" multiple hidden>
+    </div>
+  </section>
+</div>
+
+<!-- 공용 팝업 -->
+<div id="sheetWrap" class="sheet-wrap hidden">
+  <div class="sheet" role="dialog" aria-modal="true">
+    <h2 id="sheetTitle"></h2>
+    <div id="sheetBody"></div>
+    <div id="sheetActions" class="sheet-actions"></div>
+  </div>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+<input type="file" id="importInput" accept=".json,application/json" hidden>
+
+<script src="firebase-config.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
