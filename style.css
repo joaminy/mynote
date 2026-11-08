@@ -327,8 +327,8 @@ svg.ic { width: 22px; height: 22px; display: block; }
 .drag-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drag-ghost svg.ic { width: 18px; height: 18px; color: var(--accent); flex: none; }
 .drop-tray {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 70;
-  width: min(560px, calc(100% - 24px)); max-height: 46vh; overflow-y: auto;
+  position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top)); z-index: 70;
+  width: min(620px, calc(100% - 24px)); max-height: 34vh; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px; box-shadow: 0 10px 34px rgba(0,0,0,.28);
 }
 .drop-tray h3 { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); }
@@ -372,3 +372,17 @@ body.is-dragging { cursor: grabbing; }
 .add-pill { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 6px; border: 1.5px dashed var(--line); background: none; color: var(--accent); border-radius: 18px; padding: 7px 14px; font-weight: 700; font-size: 13px; cursor: pointer; }
 .add-pill svg.ic { width: 18px; height: 18px; }
 .tray-tip { margin: 10px 2px 0; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+
+/* ----- 끌어서 순서 바꾸기 표시 ----- */
+.card.ins-before { box-shadow: -6px 0 0 0 var(--accent); }
+.card.ins-after { box-shadow: 6px 0 0 0 var(--accent); }
+.note-list.list .card.ins-before { box-shadow: 0 -6px 0 0 var(--accent); }
+.note-list.list .card.ins-after { box-shadow: 0 6px 0 0 var(--accent); }
+.ftile.ins-before { box-shadow: -6px 0 0 0 var(--accent); }
+.ftile.ins-after { box-shadow: 6px 0 0 0 var(--accent); }
+.nav-folder.ins-before { box-shadow: inset 0 3px 0 0 var(--accent); }
+.nav-folder.ins-after { box-shadow: inset 0 -3px 0 0 var(--accent); }
+.ftile.dragging, .nav-folder.dragging { opacity: .35; }
+.ftile { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.nav-item { -webkit-user-select: none; user-select: none; }
+.drag-ghost .fsvg { width: 22px; height: 19px; flex: none; }

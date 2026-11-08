@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.3.0';
+  var APP_VERSION = '1.4.0';
   var MAX_FILE = 5 * 1024 * 1024; // 첨부 파일 1개 최대 5MB
   var TRASH_DAYS = 30;
 
@@ -328,7 +328,7 @@
   function parentOf(f) { return f && f.parentId && f.parentId !== f.id && state.folders.has(f.parentId) ? state.folders.get(f.parentId) : null; }
   function byCreated(a, b) { return (a.createdAt || 0) - (b.createdAt || 0); }
   function childFolders(pid) {
-    return folderList().filter(function (f) { var p = parentOf(f); return (p ? p.id : null) === (pid || null); }).sort(byCreated);
+    return folderList().filter(function (f) { var p = parentOf(f); return (p ? p.id : null) === (pid || null); }).sort(function (a, b) { return folderKey(a) - folderKey(b); });
   }
   function folderPath(f) {
     var path = [], guard = 0;
@@ -413,6 +413,7 @@
     var s = settings.sort;
     arr.sort(function (a, b) {
       if (s === 'title') return (a.title || a.text || '').localeCompare(b.title || b.text || '', 'ko');
+      if (s === 'manual') return noteKey(a) - noteKey(b);
       if (s === 'created') return (b.createdAt || 0) - (a.createdAt || 0);
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
@@ -448,6 +449,7 @@
       t.appendChild(m);
     }
     if (o.drop !== undefined) t.dataset.drop = o.drop;
+    if (o.folderId) { t.dataset.folder = o.folderId; bindDrag(t, 'folder', o.folderId); }
     t.addEventListener('click', o.onClick);
     t.addEventListener('keydown', function (e) { if (e.key === 'Enter') o.onClick(); });
     return t;
@@ -488,7 +490,7 @@
     }
     kids.forEach(function (f) {
       grid.appendChild(folderTile({ shape: folderShape(f), color: f.color, name: f.name, sub: folderSub(f, live),
-        drop: f.id, onClick: function () { goView({ type: 'folder', folderId: f.id }); }, onMore: function () { folderMenu(f); } }));
+        drop: f.id, folderId: f.id, onClick: function () { goView({ type: 'folder', folderId: f.id }); }, onMore: function () { folderMenu(f); } }));
     });
     if (v.type === 'home') {
       var none = live.filter(function (n) { return !n.folderId || !state.folders.has(n.folderId); }).length;
@@ -501,7 +503,7 @@
     var v = state.view;
     if (v.type === 'folder' && !state.query.trim()) {
       var f = state.folders.get(v.folderId);
-      var home = el('button', 'crumb', '홈'); home.addEventListener('click', function () { goView({ type: 'home' }); }); box.appendChild(home);
+      var home = el('button', 'crumb', '홈'); home.dataset.dropRoot = ''; home.addEventListener('click', function () { goView({ type: 'home' }); }); box.appendChild(home);
       folderPath(f).forEach(function (p, i, arr) {
         box.appendChild(el('span', 'crumb-sep', '›'));
         if (i === arr.length - 1) box.appendChild(el('span', 'crumb-cur', p.name));
@@ -548,8 +550,9 @@
       if (n.attachments && n.attachments.length) { var a = el('span'); a.innerHTML = ic('clip'); foot.appendChild(a); }
       foot.appendChild(el('span', 'date', fmtDate(n.updatedAt)));
       c.appendChild(foot);
-      c.addEventListener('click', function () { if (suppressClick) { suppressClick = false; return; } onCardClick(n.id); });
-      if (!n.trashed) bindCardDrag(c, n);
+      c.dataset.note = n.id;
+      c.addEventListener('click', function () { onCardClick(n.id); });
+      if (!n.trashed) bindDrag(c, 'note', n.id);
       c.addEventListener('keydown', function (e) { if (e.key === 'Enter') onCardClick(n.id); });
       list.appendChild(c);
     });
@@ -580,7 +583,7 @@
     var live = all.filter(function (n) { return !n.trashed; });
     var v = state.view;
     function go(view) { return function () { goView(view); }; }
-    nav.appendChild(navItem(ic('home'), '홈 (폴더 보기)', null, v.type === 'home', go({ type: 'home' })));
+    var homeItem = navItem(ic('home'), '홈 (폴더 보기)', null, v.type === 'home', go({ type: 'home' })); homeItem.dataset.dropRoot = ''; nav.appendChild(homeItem);
     nav.appendChild(navItem(ic('notes'), '모든 노트', live.length, v.type === 'all', go({ type: 'all' })));
     nav.appendChild(navItem(ic('star'), '즐겨찾기', live.filter(function (n) { return n.favorite; }).length, v.type === 'fav', go({ type: 'fav' })));
     var t = el('div', 'nav-title'); t.appendChild(el('span', null, '폴더'));
@@ -590,7 +593,7 @@
       var f = row.f;
       var b = navItem(folderSvg(folderShape(f), f.color), f.name, live.filter(function (n) { return n.folderId === f.id; }).length,
         v.type === 'folder' && v.folderId === f.id, go({ type: 'folder', folderId: f.id }), row.depth);
-      b.classList.add('nav-folder'); b.dataset.drop = f.id;
+      b.classList.add('nav-folder'); b.dataset.drop = f.id; b.dataset.folder = f.id; bindDrag(b, 'folder', f.id);
       var chev = el('span', 'chev');
       if (row.kids && settings.subMenu !== 'show') {
         chev.innerHTML = ic(row.open ? 'chevD' : 'chevR');
@@ -709,77 +712,142 @@
   }
 
 
-  /* ================= 노트를 끌어서 다른 폴더로 옮기기 =================
-   * PC: 마우스로 노트 카드를 잡아 끌기 / 휴대폰: 카드를 0.4초 길게 누른 뒤 끌기
-   * 놓을 수 있는 곳: 아래에 나타나는 폴더 상자, 폴더 칸, 왼쪽 메뉴의 폴더, 위쪽 경로
+  /* ================= 끌어서 옮기기 (노트·폴더) =================
+   * PC: 마우스로 잡아 끌기 / 휴대폰: 0.4초 길게 누른 뒤 끌기
+   * 노트: 폴더 위에 놓으면 그 폴더로 이동, 다른 노트 카드의 앞·뒤에 놓으면 순서 변경
+   * 폴더: 다른 폴더 가운데에 놓으면 그 안으로, 폴더의 앞·뒤(가장자리)에 놓으면 순서 변경, "맨 위(홈)"에 놓으면 맨 위로
    */
   var drag = null, suppressClick = false;
-  function bindCardDrag(card, note) {
-    card.addEventListener('mousedown', function (e) {
-      if (e.button !== 0) return;
+  function noteKey(n) { return typeof n.order === 'number' ? n.order : -(n.createdAt || 0) / 1000; }
+  function folderKey(f) { return typeof f.order === 'number' ? f.order : (f.createdAt || 0) / 1000; }
+  function noteLabel(n) { var t = n.title || (n.text || '').split('\n')[0] || '제목 없음'; return t.length > 14 ? t.slice(0, 14) + '…' : t; }
+  function canReorderNotes() { var t = state.view.type; return !state.query.trim() && t !== 'trash' && t !== 'home'; }
+
+  function bindDrag(elm, kind, id) {
+    var skip = '.ftile-more, .more, .chev';
+    elm.addEventListener('mousedown', function (e) {
+      if (e.button !== 0 || (e.target.closest && e.target.closest(skip))) return;
       e.preventDefault();
-      drag = { noteId: note.id, card: card, x0: e.clientX, y0: e.clientY, active: false, mode: 'mouse' };
+      drag = { kind: kind, id: id, el: elm, x0: e.clientX, y0: e.clientY, active: false, mode: 'mouse' };
     });
-    card.addEventListener('touchstart', function (e) {
-      if (e.touches.length !== 1) return;
+    elm.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1 || (e.target.closest && e.target.closest(skip))) return;
       var t = e.touches[0];
-      drag = { noteId: note.id, card: card, x0: t.clientX, y0: t.clientY, active: false, mode: 'touch' };
+      drag = { kind: kind, id: id, el: elm, x0: t.clientX, y0: t.clientY, active: false, mode: 'touch' };
       drag.timer = setTimeout(function () { if (drag && !drag.active) startDrag(drag.x0, drag.y0); }, 400);
     }, { passive: true });
-    card.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    elm.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
   function startDrag(x, y) {
-    var n = state.notes.get(drag.noteId); if (!n) { drag = null; return; }
+    var label, icon;
+    if (drag.kind === 'note') {
+      var n = state.notes.get(drag.id); if (!n) { drag = null; return; }
+      label = noteLabel(n); icon = ic('notes');
+    } else {
+      var f = state.folders.get(drag.id); if (!f) { drag = null; return; }
+      label = f.name; icon = folderSvg(folderShape(f), f.color);
+    }
     drag.active = true;
     try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) { /* 무시 */ }
-    var g = el('div', 'drag-ghost'); g.innerHTML = ic('notes');
-    g.appendChild(el('span', null, n.title || (n.text || '').split('\n')[0] || '제목 없음'));
+    var g = el('div', 'drag-ghost'); g.innerHTML = icon; g.appendChild(el('span', null, label));
     document.body.appendChild(g); drag.ghost = g;
-    drag.card.classList.add('dragging');
+    drag.el.classList.add('dragging');
     $('toast').classList.add('hidden');
     document.body.classList.add('is-dragging');
-    showDropTray(n);
+    showDropTray();
+    drag.scrollTimer = setInterval(autoScroll, 16);
     moveDrag(x, y);
   }
+  function findTarget(x, y) {
+    var hit = document.elementFromPoint(x, y);
+    if (!hit || !hit.closest) return null;
+    if (drag.kind === 'note') {
+      var fd = hit.closest('[data-drop]');
+      if (fd) return { el: fd, action: 'into', folderId: fd.dataset.drop || null };
+      var card = hit.closest('.card[data-note]');
+      if (card && card.dataset.note !== drag.id && canReorderNotes()) {
+        var r = card.getBoundingClientRect();
+        var before = settings.layout === 'list' ? y < r.top + r.height / 2 : x < r.left + r.width / 2;
+        return { el: card, action: before ? 'before' : 'after', id: card.dataset.note };
+      }
+      return null;
+    }
+    var root = hit.closest('[data-drop-root]');
+    if (root) return { el: root, action: 'root' };
+    var fe = hit.closest('[data-folder]') || hit.closest('[data-drop]');
+    if (!fe) return null;
+    var fid = fe.dataset.folder || fe.dataset.drop;
+    var tf = fid && state.folders.get(fid);
+    if (!tf || fid === drag.id || isInside(tf, drag.id)) return null; // 자기 자신이나 자기 안의 폴더에는 넣을 수 없음
+    if (fe.dataset.folder) {
+      var r2 = fe.getBoundingClientRect(), vertical = fe.classList.contains('nav-folder');
+      var pos = vertical ? (y - r2.top) / r2.height : (x - r2.left) / r2.width;
+      if (pos < 0.25) return { el: fe, action: 'before', id: fid };
+      if (pos > 0.75) return { el: fe, action: 'after', id: fid };
+    }
+    return { el: fe, action: 'into', folderId: fid };
+  }
+  function clearMark(t) { if (t && t.el) t.el.classList.remove('drop-hover', 'ins-before', 'ins-after'); }
   function moveDrag(x, y) {
     if (!drag || !drag.ghost) return;
-    // 휴대폰에서는 손가락에 가리지 않도록 끌리는 카드를 손가락 위쪽에 보여 줌
+    drag.lastX = x; drag.lastY = y;
     if (drag.mode === 'touch') drag.ghost.style.transform = 'translate(' + (x - 40) + 'px,' + (y - 78) + 'px)';
     else drag.ghost.style.transform = 'translate(' + (x + 12) + 'px,' + (y - 18) + 'px)';
-    var hit = document.elementFromPoint(x, y);
-    var target = hit && hit.closest ? hit.closest('[data-drop]') : null;
-    if (drag.target !== target) {
-      if (drag.target) drag.target.classList.remove('drop-hover');
-      if (target) target.classList.add('drop-hover');
-      drag.target = target;
+    var t = findTarget(x, y);
+    var same = t && drag.target && t.el === drag.target.el && t.action === drag.target.action;
+    if (!same) {
+      clearMark(drag.target);
+      if (t) t.el.classList.add(t.action === 'before' ? 'ins-before' : t.action === 'after' ? 'ins-after' : 'drop-hover');
+      drag.target = t;
     }
+  }
+  /* 끄는 중에 목록 위·아래 끝으로 가면 목록이 저절로 움직임 */
+  function autoScroll() {
+    if (!drag || !drag.active || drag.lastY == null) return;
+    var sc = $('listScroll'), r = sc.getBoundingClientRect(), tr = $('dropTray').getBoundingClientRect();
+    var top = Math.max(r.top, tr.bottom), y = drag.lastY, dy = 0;
+    if (drag.lastX < r.left || drag.lastX > r.right) return;
+    if (y > top && y < top + 44) dy = -Math.max(4, (top + 44 - y) / 3);
+    else if (y > r.bottom - 52 && y < r.bottom + 30) dy = Math.max(4, (y - (r.bottom - 52)) / 3);
+    if (dy) { sc.scrollTop += dy; moveDrag(drag.lastX, drag.lastY); }
   }
   function endDrag(x, y) {
     if (!drag) return;
-    if (drag.active) {
-      moveDrag(x, y);
-      var target = drag.target, noteId = drag.noteId;
-      // 마우스로 끈 뒤 생기는 클릭으로 노트가 열리지 않게 함 (터치는 touchend에서 이미 막음)
-      if (drag.mode === 'mouse') { suppressClick = true; setTimeout(function () { suppressClick = false; }, 400); }
-      cleanupDrag();
-      if (target) moveNoteTo(noteId, target.dataset.drop || null, true);
-    } else drag = null;
+    if (!drag.active) { drag = null; return; }
+    moveDrag(x, y);
+    var t = drag.target, kind = drag.kind, id = drag.id;
+    // 마우스로 끈 뒤 생기는 클릭으로 노트·폴더가 열리지 않게 함 (터치는 touchend에서 이미 막음)
+    if (drag.mode === 'mouse') { suppressClick = true; setTimeout(function () { suppressClick = false; }, 0); }
+    cleanupDrag();
+    if (!t) return;
+    if (kind === 'note') {
+      if (t.action === 'into') moveNoteTo(id, t.folderId, true);
+      else reorderNote(id, t.id, t.action);
+    } else {
+      if (t.action === 'root') moveFolderTo(id, null);
+      else if (t.action === 'into') moveFolderTo(id, t.folderId);
+      else reorderFolder(id, t.id, t.action);
+    }
   }
   function cleanupDrag() {
     if (!drag) return;
-    clearTimeout(drag.timer);
+    clearTimeout(drag.timer); clearInterval(drag.scrollTimer);
     if (drag.ghost) drag.ghost.remove();
-    if (drag.target) drag.target.classList.remove('drop-hover');
-    if (drag.card) drag.card.classList.remove('dragging');
+    clearMark(drag.target);
+    if (drag.el) drag.el.classList.remove('dragging');
     document.body.classList.remove('is-dragging');
     $('dropTray').classList.add('hidden');
     drag = null;
   }
+  document.addEventListener('click', function (e) {
+    if (suppressClick) { suppressClick = false; e.stopPropagation(); e.preventDefault(); }
+  }, true);
   document.addEventListener('mousemove', function (e) {
     if (!drag || drag.mode !== 'mouse') return;
     if (!drag.active) {
       if (Math.abs(e.clientX - drag.x0) + Math.abs(e.clientY - drag.y0) < 8) return;
       startDrag(e.clientX, e.clientY);
+      if (!drag) return;
     }
     moveDrag(e.clientX, e.clientY);
   });
@@ -803,25 +871,46 @@
   }, { passive: false });
   document.addEventListener('touchcancel', function () { if (drag) cleanupDrag(); });
 
-  function showDropTray(n) {
+  /* 끄는 동안 화면 위쪽에 나타나는 "놓을 곳" 상자 */
+  function showDropTray() {
     var tray = $('dropTray'); tray.textContent = '';
-    tray.appendChild(el('h3', null, '옮길 폴더 위에 놓으세요'));
     var box = el('div', 'drop-chips');
-    var cur = n.folderId && state.folders.has(n.folderId) ? n.folderId : null;
-    function chip(html, label, drop, isCur) {
-      var c = el('div', 'drop-chip' + (isCur ? ' cur' : '')); c.dataset.drop = drop;
-      c.innerHTML = html; c.appendChild(el('span', null, label + (isCur ? ' (지금 폴더)' : '')));
+    function chip(html, label, attrs, isCur) {
+      var c = el('div', 'drop-chip' + (isCur ? ' cur' : ''));
+      Object.keys(attrs).forEach(function (k) { c.setAttribute(k, attrs[k]); });
+      c.innerHTML = html; c.appendChild(el('span', null, label + (isCur ? ' (지금 위치)' : '')));
       box.appendChild(c);
     }
-    visibleFolderTree().forEach(function (r) { chip(folderSvg(folderShape(r.f), r.f.color), pathName(r.f), r.f.id, cur === r.f.id); });
-    if (settings.subMenu !== 'show' && folderList().some(function (f) { return parentOf(f); })) tray.appendChild(el('p', 'tray-tip', '접혀 있는 하위 폴더는 왼쪽 메뉴에서 ▸를 눌러 펼치면 여기에 나타납니다. 지금 연 폴더의 하위 폴더 칸에 바로 놓아도 됩니다.'));
-    chip(ic('folder'), '폴더 없음', '', cur === null);
+    if (drag.kind === 'note') {
+      var n = state.notes.get(drag.id);
+      var cur = n.folderId && state.folders.has(n.folderId) ? n.folderId : null;
+      tray.appendChild(el('h3', null, canReorderNotes() ? '폴더 위에 놓으면 이동 · 다른 노트 앞뒤에 놓으면 순서 변경' : '옮길 폴더 위에 놓으세요'));
+      visibleFolderTree().forEach(function (r) { chip(folderSvg(folderShape(r.f), r.f.color), pathName(r.f), { 'data-drop': r.f.id }, cur === r.f.id); });
+      chip(ic('folder'), '폴더 없음', { 'data-drop': '' }, cur === null);
+    } else {
+      var f = state.folders.get(drag.id), p = parentOf(f);
+      tray.appendChild(el('h3', null, '폴더 위에 놓으면 그 안으로 · 폴더 가장자리에 놓으면 순서 변경'));
+      chip(ic('home'), '맨 위 (홈)', { 'data-drop-root': '' }, !p);
+      visibleFolderTree().forEach(function (r) {
+        if (r.f.id === f.id || isInside(r.f, f.id)) return;
+        chip(folderSvg(folderShape(r.f), r.f.color), pathName(r.f), { 'data-drop': r.f.id }, p && p.id === r.f.id);
+      });
+    }
     tray.appendChild(box);
     tray.classList.remove('hidden');
   }
+
+  /* ----- 노트 이동·순서 ----- */
+  function saveNoteQuiet(id, patch) {
+    if (state.currentId === id) flushSave(false);
+    var n = state.notes.get(id); if (!n) return;
+    var updated = Object.assign({}, n, patch);
+    state.notes.set(id, updated);
+    store.saveNote(updated);
+  }
   function setNoteFolder(id, folderId) {
     var n = state.notes.get(id); if (!n) return;
-    if (state.currentId === id) { patchCurrent({ folderId: folderId }); return; }
+    if (state.currentId === id) { patchCurrent({ folderId: folderId }); renderAll(); return; }
     var updated = Object.assign({}, n, { folderId: folderId, updatedAt: Date.now() });
     state.notes.set(id, updated);
     store.saveNote(updated);
@@ -834,9 +923,78 @@
     if (from === folderId) { toast('이미 이 폴더에 있습니다.'); return; }
     setNoteFolder(id, folderId);
     var name = folderId ? state.folders.get(folderId).name : '폴더 없음';
-    var title = n.title || (n.text || '').split('\n')[0] || '제목 없음';
-    if (title.length > 14) title = title.slice(0, 14) + '…';
-    if (withUndo) toast('"' + title + '" → ' + name + '(으)로 옮겼습니다.', 5000, '되돌리기', function () { setNoteFolder(id, from); toast('되돌렸습니다.'); });
+    if (withUndo) toast('"' + noteLabel(n) + '" → ' + name + '(으)로 옮겼습니다.', 5000, '되돌리기', function () { setNoteFolder(id, from); toast('되돌렸습니다.'); });
+  }
+  /* "직접 정렬"로 처음 바꿀 때, 지금 화면에 보이는 순서를 그대로 고정 */
+  function freezeManualOrder() {
+    var shown = visibleNotes();
+    var min = Math.min.apply(null, Array.from(state.notes.values()).map(noteKey).concat([0]));
+    var base = Math.floor(min) - shown.length - 1;
+    shown.forEach(function (n, i) { saveNoteQuiet(n.id, { order: base + i }); });
+  }
+  function reorderNote(id, targetId, where) {
+    var switched = false;
+    if (settings.sort !== 'manual') { freezeManualOrder(); settings.sort = 'manual'; saveSettings(); switched = true; }
+    var moving = state.notes.get(id); if (!moving) return;
+    var oldOrder = moving.order;
+    var arr = visibleNotes().filter(function (n) { return n.id !== id; });
+    var ti = arr.findIndex(function (n) { return n.id === targetId; });
+    if (ti < 0) return;
+    var at = where === 'before' ? ti : ti + 1;
+    var prev = arr[at - 1], next = arr[at];
+    var k = prev && next ? (noteKey(prev) + noteKey(next)) / 2 : prev ? noteKey(prev) + 1 : next ? noteKey(next) - 1 : 0;
+    if ((prev && !(k > noteKey(prev))) || (next && !(k < noteKey(next)))) {
+      // 간격이 너무 좁아지면 이 목록의 번호를 다시 매김
+      arr.splice(at, 0, moving);
+      var base = noteKey(arr[0]);
+      arr.forEach(function (n, i) { if (n.id !== id) saveNoteQuiet(n.id, { order: base + i }); else k = base + i; });
+    }
+    saveNoteQuiet(id, { order: k });
+    renderAll();
+    toast(switched ? '정렬을 "직접 정렬"로 바꾸고 순서를 옮겼습니다.' : '순서를 바꿨습니다.', 5000, '되돌리기', function () {
+      saveNoteQuiet(id, { order: oldOrder === undefined ? null : oldOrder }); renderAll(); toast('되돌렸습니다.');
+    });
+  }
+
+  /* ----- 폴더 이동·순서 ----- */
+  function saveFolderPatch(id, patch) {
+    var f = state.folders.get(id); if (!f) return;
+    var updated = Object.assign({}, f, patch);
+    state.folders.set(id, updated);
+    store.saveFolder(updated);
+  }
+  function folderUndo(id, f) {
+    return function () { saveFolderPatch(id, { parentId: f.parentId || null, order: typeof f.order === 'number' ? f.order : null }); renderAll(); toast('되돌렸습니다.'); };
+  }
+  function moveFolderTo(id, parentId) {
+    var f = state.folders.get(id); if (!f) return;
+    var cur = parentOf(f);
+    if ((cur ? cur.id : null) === (parentId || null)) { toast('이미 이 위치에 있습니다.'); return; }
+    if (parentId && (parentId === id || isInside(state.folders.get(parentId), id))) { toast('폴더를 자기 안으로 옮길 수는 없습니다.'); return; }
+    var sibs = childFolders(parentId);
+    var k = sibs.length ? folderKey(sibs[sibs.length - 1]) + 1 : 0;
+    saveFolderPatch(id, { parentId: parentId || null, order: k });
+    if (parentId) { var exp = Object.assign({}, settings.expanded || {}); exp[parentId] = true; settings.expanded = exp; saveSettings(); }
+    renderAll();
+    var where = parentId ? '"' + state.folders.get(parentId).name + '" 안으로' : '맨 위(홈)로';
+    toast('"' + f.name + '" 폴더를 ' + where + ' 옮겼습니다.', 5000, '되돌리기', folderUndo(id, f));
+  }
+  function reorderFolder(id, targetId, where) {
+    var f = state.folders.get(id), target = state.folders.get(targetId); if (!f || !target) return;
+    var tp = parentOf(target), pid = tp ? tp.id : null;
+    var arr = childFolders(pid).filter(function (x) { return x.id !== id; });
+    var ti = arr.findIndex(function (x) { return x.id === targetId; }); if (ti < 0) return;
+    var at = where === 'before' ? ti : ti + 1;
+    var prev = arr[at - 1], next = arr[at];
+    var k = prev && next ? (folderKey(prev) + folderKey(next)) / 2 : prev ? folderKey(prev) + 1 : next ? folderKey(next) - 1 : 0;
+    if ((prev && !(k > folderKey(prev))) || (next && !(k < folderKey(next)))) {
+      arr.splice(at, 0, f);
+      arr.forEach(function (x, i) { if (x.id !== id) saveFolderPatch(x.id, { order: i }); else k = i; });
+    }
+    var movedParent = (parentOf(f) ? parentOf(f).id : null) !== pid;
+    saveFolderPatch(id, { parentId: pid, order: k });
+    renderAll();
+    toast(movedParent ? '"' + f.name + '" 폴더를 옮겼습니다.' : '폴더 순서를 바꿨습니다.', 5000, '되돌리기', folderUndo(id, f));
   }
 
   /* ================= 노트 열기·저장 ================= */
@@ -850,6 +1008,7 @@
     var now = Date.now();
     var folderId = state.view.type === 'folder' ? state.view.folderId : null;
     var n = { id: 'n_' + uid(), title: '', html: '', text: '', folderId: folderId, favorite: state.view.type === 'fav',
+      order: settings.sort === 'manual' ? Math.floor(Math.min.apply(null, Array.from(state.notes.values()).map(noteKey).concat([0]))) - 1 : null,
       color: '', trashed: false, trashedAt: null, createdAt: now, updatedAt: now, attachments: [] };
     state.draft = n;
     openNote(n, true);
@@ -1335,7 +1494,7 @@
     body.appendChild(setRow('목록 보기', seg([['grid', '격자'], ['list', '목록']], settings.layout, function (v) { settings.layout = v; saveSettings(); renderList(); })));
     body.appendChild(setRow('격자 크기', seg(GRID_SIZES, settings.gridSize, function (v) { settings.gridSize = v; saveSettings(); renderList(); }), '목록 위의 보기 버튼에서도 바꿀 수 있습니다.'));
     body.appendChild(setRow('왼쪽 메뉴의 하위 폴더', seg([['hide', '접어 두기'], ['show', '모두 펼치기']], settings.subMenu, function (v) { settings.subMenu = v; saveSettings(); renderDrawer(); }), '"접어 두기"는 맨 위 폴더만 보이고, 폴더 옆 ▸를 눌러야 하위 폴더가 보입니다.'));
-    body.appendChild(setRow('정렬', seg([['updated', '수정일'], ['created', '만든 날짜'], ['title', '제목']], settings.sort, function (v) { settings.sort = v; saveSettings(); renderList(); })));
+    body.appendChild(setRow('정렬', seg([['updated', '수정일'], ['created', '만든 날짜'], ['title', '제목'], ['manual', '직접']], settings.sort, function (v) { settings.sort = v; saveSettings(); renderList(); })));
     var bk = el('div'); bk.style.display = 'flex'; bk.style.gap = '8px';
     var ex = el('button', 'btn small', '내보내기'); ex.addEventListener('click', exportBackup);
     var im = el('button', 'btn small', '가져오기'); im.addEventListener('click', function () { $('importInput').click(); });
@@ -1480,7 +1639,7 @@
     });
     $('sortBtn').addEventListener('click', function () {
       var body = el('div');
-      [['updated', '수정한 날짜순'], ['created', '만든 날짜순'], ['title', '제목순']].forEach(function (o) {
+      [['updated', '수정한 날짜순'], ['created', '만든 날짜순'], ['title', '제목순'], ['manual', '직접 정렬 (노트를 끌어서 순서 정하기)']].forEach(function (o) {
         body.appendChild(menuItem(settings.sort === o[0] ? 'check' : 'sort', o[1], function () { settings.sort = o[0]; saveSettings(); renderList(); closeSheet(); }));
       });
       openSheet('정렬', body, [{ label: '닫기' }]);
