@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.1.0';
+  var APP_VERSION = '1.2.0';
   var MAX_FILE = 5 * 1024 * 1024; // 첨부 파일 1개 최대 5MB
   var TRASH_DAYS = 30;
 
@@ -27,11 +27,16 @@
   var SIZES = [12, 14, 16, 18, 20, 24, 28, 36];
   var TEXT_COLORS = [
     { name: '기본', value: 'var(--ink)' },
-    { name: '빨강', value: '#E53935' }, { name: '주황', value: '#F57C00' }, { name: '노랑', value: '#C9A100' },
-    { name: '초록', value: '#2E9E4F' }, { name: '파랑', value: '#1E73E8' }, { name: '남색', value: '#3949AB' },
-    { name: '보라', value: '#8E44CF' }, { name: '분홍', value: '#D81B78' }, { name: '회색', value: '#8A8A8A' },
-    { name: '하늘', value: '#039BE5' }, { name: '청록', value: '#00897B' }, { name: '연두', value: '#7CB342' },
-    { name: '갈색', value: '#8D6E63' }, { name: '진회색', value: '#546E7A' }
+    { name: '진빨강', value: '#B71C1C' }, { name: '빨강', value: '#E53935' }, { name: '산호', value: '#FF6F61' },
+    { name: '진분홍', value: '#AD1457' }, { name: '분홍', value: '#D81B78' },
+    { name: '진보라', value: '#6A1B9A' }, { name: '보라', value: '#8E44CF' }, { name: '연보라', value: '#9575CD' },
+    { name: '남색', value: '#283593' }, { name: '군청', value: '#3949AB' },
+    { name: '진파랑', value: '#0D47A1' }, { name: '파랑', value: '#1E73E8' }, { name: '하늘', value: '#039BE5' },
+    { name: '청록', value: '#00838F' }, { name: '에메랄드', value: '#00897B' },
+    { name: '진초록', value: '#1B5E20' }, { name: '초록', value: '#2E9E4F' }, { name: '연두', value: '#7CB342' }, { name: '올리브', value: '#827717' },
+    { name: '노랑', value: '#C9A100' }, { name: '호박', value: '#FF8F00' }, { name: '주황', value: '#F57C00' }, { name: '진주황', value: '#E65100' },
+    { name: '갈색', value: '#8D6E63' }, { name: '진갈색', value: '#5D4037' },
+    { name: '회색', value: '#8A8A8A' }, { name: '진회색', value: '#546E7A' }, { name: '검정', value: '#212121' }
   ];
   var HILITE_COLORS = [
     { name: '없음', value: 'transparent' },
@@ -43,7 +48,12 @@
     { name: '기본', key: '' }, { name: '노랑', key: 'yellow' }, { name: '초록', key: 'green' },
     { name: '파랑', key: 'blue' }, { name: '분홍', key: 'pink' }, { name: '보라', key: 'purple' }, { name: '회색', key: 'gray' }
   ];
-  var FOLDER_COLORS = ['#F08A24', '#F6B400', '#E53935', '#D81B78', '#8E44CF', '#3949AB', '#1E73E8', '#039BE5', '#00897B', '#2E9E4F', '#8D6E63', '#8A8A8A'];
+  var FOLDER_COLORS = [
+    '#F08A24', '#FFA000', '#F6B400', '#C0CA33', '#7CB342', '#2E9E4F', '#00897B', '#00ACC1',
+    '#039BE5', '#1E73E8', '#3949AB', '#5E35B1', '#8E44CF', '#BA68C8', '#D81B78', '#E53935',
+    '#B71C1C', '#FF7043', '#1B5E20', '#0D47A1', '#8D6E63', '#5D4037', '#546E7A', '#8A8A8A',
+    '#F8BBD0', '#FFCCBC', '#FFE082', '#C5E1A5', '#B2DFDB', '#B3E5FC', '#D1C4E9', '#CFD8DC'
+  ];
   var ACCENTS = [
     { name: '주황', value: '#F08A24' }, { name: '파랑', value: '#2D7FF9' }, { name: '초록', value: '#23A26D' },
     { name: '보라', value: '#8B5CF6' }, { name: '분홍', value: '#E8508A' }, { name: '회색', value: '#6B7280' }
@@ -116,8 +126,13 @@
     return d.getFullYear() + '. ' + (d.getMonth() + 1) + '. ' + d.getDate() + '.';
   }
   var toastTimer;
-  function toast(msg, ms) {
+  function toast(msg, ms, actionLabel, action) {
     var t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+    if (actionLabel) {
+      var b = document.createElement('button'); b.textContent = actionLabel;
+      b.addEventListener('click', function () { t.classList.add('hidden'); action(); });
+      t.appendChild(b);
+    }
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.add('hidden'); }, ms || 2600);
   }
   function isWide() { return window.matchMedia('(min-width: 1024px)').matches; }
@@ -405,6 +420,7 @@
       m.addEventListener('click', function (e) { e.stopPropagation(); o.onMore(); });
       t.appendChild(m);
     }
+    if (o.drop !== undefined) t.dataset.drop = o.drop;
     t.addEventListener('click', o.onClick);
     t.addEventListener('keydown', function (e) { if (e.key === 'Enter') o.onClick(); });
     return t;
@@ -430,11 +446,11 @@
     }
     kids.forEach(function (f) {
       grid.appendChild(folderTile({ shape: folderShape(f), color: f.color, name: f.name, sub: folderSub(f, live),
-        onClick: function () { goView({ type: 'folder', folderId: f.id }); }, onMore: function () { folderMenu(f); } }));
+        drop: f.id, onClick: function () { goView({ type: 'folder', folderId: f.id }); }, onMore: function () { folderMenu(f); } }));
     });
     if (v.type === 'home') {
       var none = live.filter(function (n) { return !n.folderId || !state.folders.has(n.folderId); }).length;
-      if (none) grid.appendChild(folderTile({ shape: 'folder', color: SYS_COLOR, badge: 'folder', name: '폴더 없음', sub: '노트 ' + none, onClick: function () { goView({ type: 'none' }); } }));
+      if (none) grid.appendChild(folderTile({ shape: 'folder', color: SYS_COLOR, badge: 'folder', name: '폴더 없음', sub: '노트 ' + none, drop: '', onClick: function () { goView({ type: 'none' }); } }));
     }
     grid.appendChild(folderTile({ add: true, name: v.type === 'folder' ? '하위 폴더 추가' : '새 폴더', onClick: function () { editFolder(null, parentId); } }));
   }
@@ -447,7 +463,7 @@
       folderPath(f).forEach(function (p, i, arr) {
         box.appendChild(el('span', 'crumb-sep', '›'));
         if (i === arr.length - 1) box.appendChild(el('span', 'crumb-cur', p.name));
-        else { var b = el('button', 'crumb', p.name); b.addEventListener('click', function () { goView({ type: 'folder', folderId: p.id }); }); box.appendChild(b); }
+        else { var b = el('button', 'crumb', p.name); b.dataset.drop = p.id; b.addEventListener('click', function () { goView({ type: 'folder', folderId: p.id }); }); box.appendChild(b); }
       });
       box.appendChild(el('span', 'crumb-count', ' · 노트 ' + count + '개'));
     } else if (v.type === 'home' && !state.query.trim()) {
@@ -490,7 +506,8 @@
       if (n.attachments && n.attachments.length) { var a = el('span'); a.innerHTML = ic('clip'); foot.appendChild(a); }
       foot.appendChild(el('span', 'date', fmtDate(n.updatedAt)));
       c.appendChild(foot);
-      c.addEventListener('click', function () { onCardClick(n.id); });
+      c.addEventListener('click', function () { if (suppressClick) { suppressClick = false; return; } onCardClick(n.id); });
+      if (!n.trashed) bindCardDrag(c, n);
       c.addEventListener('keydown', function (e) { if (e.key === 'Enter') onCardClick(n.id); });
       list.appendChild(c);
     });
@@ -531,14 +548,14 @@
       var f = row.f;
       var b = navItem(folderSvg(folderShape(f), f.color), f.name, live.filter(function (n) { return n.folderId === f.id; }).length,
         v.type === 'folder' && v.folderId === f.id, go({ type: 'folder', folderId: f.id }), row.depth);
-      b.classList.add('nav-folder');
+      b.classList.add('nav-folder'); b.dataset.drop = f.id;
       var m = el('span', 'icon-btn more'); m.innerHTML = ic('more'); m.title = '폴더 편집';
       m.addEventListener('click', function (e) { e.stopPropagation(); folderMenu(f); });
       b.replaceChild(m, b.querySelector('.more-space'));
       nav.appendChild(b);
     });
     var none = live.filter(function (n) { return !n.folderId || !state.folders.has(n.folderId); }).length;
-    nav.appendChild(navItem(ic('folder'), '폴더 없음', none, v.type === 'none', go({ type: 'none' })));
+    var noneItem = navItem(ic('folder'), '폴더 없음', none, v.type === 'none', go({ type: 'none' })); noneItem.dataset.drop = ''; nav.appendChild(noneItem);
     nav.appendChild(el('div', 'nav-title', ' '));
     nav.appendChild(navItem(ic('trash'), '휴지통', all.length - live.length, v.type === 'trash', go({ type: 'trash' })));
   }
@@ -639,6 +656,136 @@
       toast('폴더를 삭제했습니다.');
     }, true));
     openSheet(f.name, body, [{ label: '닫기' }]);
+  }
+
+
+  /* ================= 노트를 끌어서 다른 폴더로 옮기기 =================
+   * PC: 마우스로 노트 카드를 잡아 끌기 / 휴대폰: 카드를 0.4초 길게 누른 뒤 끌기
+   * 놓을 수 있는 곳: 아래에 나타나는 폴더 상자, 폴더 칸, 왼쪽 메뉴의 폴더, 위쪽 경로
+   */
+  var drag = null, suppressClick = false;
+  function bindCardDrag(card, note) {
+    card.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      drag = { noteId: note.id, card: card, x0: e.clientX, y0: e.clientY, active: false, mode: 'mouse' };
+    });
+    card.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) return;
+      var t = e.touches[0];
+      drag = { noteId: note.id, card: card, x0: t.clientX, y0: t.clientY, active: false, mode: 'touch' };
+      drag.timer = setTimeout(function () { if (drag && !drag.active) startDrag(drag.x0, drag.y0); }, 400);
+    }, { passive: true });
+    card.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+  function startDrag(x, y) {
+    var n = state.notes.get(drag.noteId); if (!n) { drag = null; return; }
+    drag.active = true;
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) { /* 무시 */ }
+    var g = el('div', 'drag-ghost'); g.innerHTML = ic('notes');
+    g.appendChild(el('span', null, n.title || (n.text || '').split('\n')[0] || '제목 없음'));
+    document.body.appendChild(g); drag.ghost = g;
+    drag.card.classList.add('dragging');
+    $('toast').classList.add('hidden');
+    document.body.classList.add('is-dragging');
+    showDropTray(n);
+    moveDrag(x, y);
+  }
+  function moveDrag(x, y) {
+    if (!drag || !drag.ghost) return;
+    // 휴대폰에서는 손가락에 가리지 않도록 끌리는 카드를 손가락 위쪽에 보여 줌
+    if (drag.mode === 'touch') drag.ghost.style.transform = 'translate(' + (x - 40) + 'px,' + (y - 78) + 'px)';
+    else drag.ghost.style.transform = 'translate(' + (x + 12) + 'px,' + (y - 18) + 'px)';
+    var hit = document.elementFromPoint(x, y);
+    var target = hit && hit.closest ? hit.closest('[data-drop]') : null;
+    if (drag.target !== target) {
+      if (drag.target) drag.target.classList.remove('drop-hover');
+      if (target) target.classList.add('drop-hover');
+      drag.target = target;
+    }
+  }
+  function endDrag(x, y) {
+    if (!drag) return;
+    if (drag.active) {
+      moveDrag(x, y);
+      var target = drag.target, noteId = drag.noteId;
+      // 마우스로 끈 뒤 생기는 클릭으로 노트가 열리지 않게 함 (터치는 touchend에서 이미 막음)
+      if (drag.mode === 'mouse') { suppressClick = true; setTimeout(function () { suppressClick = false; }, 400); }
+      cleanupDrag();
+      if (target) moveNoteTo(noteId, target.dataset.drop || null, true);
+    } else drag = null;
+  }
+  function cleanupDrag() {
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    if (drag.ghost) drag.ghost.remove();
+    if (drag.target) drag.target.classList.remove('drop-hover');
+    if (drag.card) drag.card.classList.remove('dragging');
+    document.body.classList.remove('is-dragging');
+    $('dropTray').classList.add('hidden');
+    drag = null;
+  }
+  document.addEventListener('mousemove', function (e) {
+    if (!drag || drag.mode !== 'mouse') return;
+    if (!drag.active) {
+      if (Math.abs(e.clientX - drag.x0) + Math.abs(e.clientY - drag.y0) < 8) return;
+      startDrag(e.clientX, e.clientY);
+    }
+    moveDrag(e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseup', function (e) { if (drag && drag.mode === 'mouse') endDrag(e.clientX, e.clientY); });
+  document.addEventListener('touchmove', function (e) {
+    if (!drag || drag.mode !== 'touch') return;
+    var t = e.touches[0];
+    if (!drag.active) {
+      // 길게 누르기 전에 손가락을 움직이면 끌기가 아니라 화면 넘기기로 봄
+      if (Math.abs(t.clientX - drag.x0) + Math.abs(t.clientY - drag.y0) > 10) { clearTimeout(drag.timer); drag = null; }
+      return;
+    }
+    e.preventDefault();
+    moveDrag(t.clientX, t.clientY);
+  }, { passive: false });
+  document.addEventListener('touchend', function (e) {
+    if (!drag || drag.mode !== 'touch') return;
+    clearTimeout(drag.timer);
+    if (drag.active) { e.preventDefault(); var t = e.changedTouches[0]; endDrag(t.clientX, t.clientY); }
+    else drag = null;
+  }, { passive: false });
+  document.addEventListener('touchcancel', function () { if (drag) cleanupDrag(); });
+
+  function showDropTray(n) {
+    var tray = $('dropTray'); tray.textContent = '';
+    tray.appendChild(el('h3', null, '옮길 폴더 위에 놓으세요'));
+    var box = el('div', 'drop-chips');
+    var cur = n.folderId && state.folders.has(n.folderId) ? n.folderId : null;
+    function chip(html, label, drop, isCur) {
+      var c = el('div', 'drop-chip' + (isCur ? ' cur' : '')); c.dataset.drop = drop;
+      c.innerHTML = html; c.appendChild(el('span', null, label + (isCur ? ' (지금 폴더)' : '')));
+      box.appendChild(c);
+    }
+    folderTree().forEach(function (r) { chip(folderSvg(folderShape(r.f), r.f.color), pathName(r.f), r.f.id, cur === r.f.id); });
+    chip(ic('folder'), '폴더 없음', '', cur === null);
+    tray.appendChild(box);
+    tray.classList.remove('hidden');
+  }
+  function setNoteFolder(id, folderId) {
+    var n = state.notes.get(id); if (!n) return;
+    if (state.currentId === id) { patchCurrent({ folderId: folderId }); return; }
+    var updated = Object.assign({}, n, { folderId: folderId, updatedAt: Date.now() });
+    state.notes.set(id, updated);
+    store.saveNote(updated);
+    renderAll();
+  }
+  function moveNoteTo(id, folderId, withUndo) {
+    var n = state.notes.get(id); if (!n) return;
+    if (folderId && !state.folders.has(folderId)) return;
+    var from = n.folderId && state.folders.has(n.folderId) ? n.folderId : null;
+    if (from === folderId) { toast('이미 이 폴더에 있습니다.'); return; }
+    setNoteFolder(id, folderId);
+    var name = folderId ? state.folders.get(folderId).name : '폴더 없음';
+    var title = n.title || (n.text || '').split('\n')[0] || '제목 없음';
+    if (title.length > 14) title = title.slice(0, 14) + '…';
+    if (withUndo) toast('"' + title + '" → ' + name + '(으)로 옮겼습니다.', 5000, '되돌리기', function () { setNoteFolder(id, from); toast('되돌렸습니다.'); });
   }
 
   /* ================= 노트 열기·저장 ================= */
@@ -1128,7 +1275,12 @@
       b.addEventListener('click', function () { settings.textColor = c.value; saveSettings(); tc.querySelectorAll('.sw').forEach(function (x) { x.classList.remove('sel'); }); b.classList.add('sel'); });
       tc.appendChild(b);
     });
-    body.appendChild(setRow('기본 글자 색', tc, '노트 본문의 기본 글자 색입니다. "자동"은 밝은 화면에서 검정, 어두운 화면에서 흰색입니다. 일부 글자만 바꾸려면 편집 화면 아래 A 버튼을 쓰세요.'));
+    var tcRow = el('label', 'sw-custom'); tcRow.appendChild(el('span', null, '직접 고르기'));
+    var tcIn = el('input'); tcIn.type = 'color';
+    tcIn.value = /^#[0-9a-f]{6}$/i.test(settings.textColor || '') ? settings.textColor : '#333333';
+    tcIn.addEventListener('input', function () { settings.textColor = tcIn.value; saveSettings(); tc.querySelectorAll('.sw').forEach(function (x) { x.classList.remove('sel'); }); });
+    tcRow.appendChild(tcIn); tc.appendChild(tcRow);
+    body.appendChild(setRow('기본 글자 색', tc, '노트 본문의 기본 글자 색입니다. "자동"은 밝은 화면에서 검정, 어두운 화면에서 흰색입니다. 검정·진한 색을 고르면 어두운 화면에서는 잘 안 보일 수 있습니다. 일부 글자만 바꾸려면 편집 화면 아래 A 버튼을 쓰세요.'));
     body.appendChild(setRow('목록 보기', seg([['grid', '격자'], ['list', '목록']], settings.layout, function (v) { settings.layout = v; saveSettings(); renderList(); })));
     body.appendChild(setRow('정렬', seg([['updated', '수정일'], ['created', '만든 날짜'], ['title', '제목']], settings.sort, function (v) { settings.sort = v; saveSettings(); renderList(); })));
     var bk = el('div'); bk.style.display = 'flex'; bk.style.gap = '8px';
@@ -1363,6 +1515,7 @@
 
     // 키보드: Esc
     document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && drag) { cleanupDrag(); return; }
       if (e.key === 'Escape') {
         if (!$('sheetWrap').classList.contains('hidden')) closeSheet();
         else if (!$('palette').classList.contains('hidden')) hidePalette();
