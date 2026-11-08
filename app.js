@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.0';
+  var APP_VERSION = '1.3.0';
   var MAX_FILE = 5 * 1024 * 1024; // 첨부 파일 1개 최대 5MB
   var TRASH_DAYS = 30;
 
@@ -25,6 +25,7 @@
   ];
   var APP_FONTS = FONTS.slice(1);
   var SIZES = [12, 14, 16, 18, 20, 24, 28, 36];
+  var GRID_SIZES = [['s', '작게'], ['m', '보통'], ['l', '크게'], ['xl', '아주 크게']];
   var TEXT_COLORS = [
     { name: '기본', value: 'var(--ink)' },
     { name: '진빨강', value: '#B71C1C' }, { name: '빨강', value: '#E53935' }, { name: '산호', value: '#FF6F61' },
@@ -62,6 +63,8 @@
   /* ---------------- 아이콘 ---------------- */
   var I = {
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    chevR: '<path d="M9.5 6l6 6-6 6"/>',
+    chevD: '<path d="M6 9.5l6 6 6-6"/>',
     home: '<path d="M4 11l8-6.5 8 6.5V20h-5.5v-5.5h-5V20H4z"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
@@ -154,7 +157,7 @@
   }
 
   /* ---------------- 설정 (기기별로 저장) ---------------- */
-  var DEFAULT_SETTINGS = { theme: 'system', accent: '#F08A24', font: 'Noto Sans KR', size: 16, layout: 'grid', sort: 'updated', textColor: '', recentColors: [] };
+  var DEFAULT_SETTINGS = { theme: 'system', accent: '#F08A24', font: 'Noto Sans KR', size: 16, layout: 'grid', sort: 'updated', textColor: '', recentColors: [], gridSize: 'm', subMenu: 'hide', expanded: {}, subGridOpen: true };
   var settings = (function () {
     try { return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(localStorage.getItem('mynote-settings') || '{}')); }
     catch (e) { return Object.assign({}, DEFAULT_SETTINGS); }
@@ -172,6 +175,7 @@
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', dark ? '#1E1E1E' : '#FFFFFF');
     $('noteList').className = 'note-list ' + (settings.layout === 'list' ? 'list' : 'grid');
+    $('noteList').setAttribute('data-size', GRID_SIZES.some(function (g) { return g[0] === settings.gridSize; }) ? settings.gridSize : 'm');
     $('layoutBtn').innerHTML = ic(settings.layout === 'list' ? 'grid' : 'list');
   }
   darkMQ.addEventListener && darkMQ.addEventListener('change', applySettings);
@@ -346,6 +350,29 @@
     })(null, 0);
     return out;
   }
+  /* 왼쪽 메뉴·옮기기 상자에 보일 폴더: 하위 폴더는 펼친 폴더 아래에만 보임 */
+  function visibleFolderTree() {
+    var auto = {};
+    if (state.view.type === 'folder') {
+      folderPath(state.folders.get(state.view.folderId)).slice(0, -1).forEach(function (p) { auto[p.id] = true; });
+    }
+    var exp = settings.expanded || {}, out = [], seen = {};
+    (function walk(pid, depth) {
+      childFolders(pid).forEach(function (f) {
+        if (seen[f.id]) return; seen[f.id] = true;
+        var kids = childFolders(f.id).length;
+        var open = settings.subMenu === 'show' || !!exp[f.id] || !!auto[f.id];
+        out.push({ f: f, depth: depth, kids: kids, open: open });
+        if (kids && open) walk(f.id, depth + 1);
+      });
+    })(null, 0);
+    return out;
+  }
+  function toggleExpanded(id) {
+    var exp = Object.assign({}, settings.expanded || {});
+    if (exp[id]) delete exp[id]; else exp[id] = true;
+    settings.expanded = exp; saveSettings(); renderDrawer();
+  }
   function pathName(f) { return folderPath(f).map(function (x) { return x.name; }).join(' › '); }
   function liveNotes() { return Array.from(state.notes.values()).filter(function (n) { return !n.trashed; }); }
 
@@ -439,7 +466,22 @@
     if (!show) return;
     var parentId = v.type === 'folder' ? v.folderId : null;
     var kids = childFolders(parentId);
-    if (v.type === 'folder') grid.appendChild(el('div', 'sec-label', '폴더'));
+    if (v.type === 'folder') {
+      if (!kids.length) {
+        var addPill = el('button', 'add-pill'); addPill.innerHTML = ic('plus'); addPill.appendChild(el('span', null, '하위 폴더 추가'));
+        addPill.addEventListener('click', function () { editFolder(null, parentId); });
+        grid.appendChild(addPill);
+        return;
+      }
+      var open = settings.subGridOpen !== false;
+      var head = el('button', 'sec-toggle');
+      head.innerHTML = ic(open ? 'chevD' : 'chevR');
+      head.appendChild(el('span', null, '하위 폴더 ' + kids.length + '개'));
+      head.appendChild(el('span', 'sec-hint', open ? '접기' : '펼치기'));
+      head.addEventListener('click', function () { settings.subGridOpen = !open; saveSettings(); renderFolderGrid(); });
+      grid.appendChild(head);
+      if (!open) return;
+    }
     if (v.type === 'home') {
       grid.appendChild(folderTile({ shape: 'folder', color: SYS_COLOR, badge: 'notes', name: '모든 노트', sub: '노트 ' + live.length, onClick: function () { goView({ type: 'all' }); } }));
       grid.appendChild(folderTile({ shape: 'folder', color: SYS_COLOR, badge: 'star', name: '즐겨찾기', sub: '노트 ' + live.filter(function (n) { return n.favorite; }).length, onClick: function () { goView({ type: 'fav' }); } }));
@@ -544,11 +586,19 @@
     var t = el('div', 'nav-title'); t.appendChild(el('span', null, '폴더'));
     var addB = el('button', null, '+ 폴더 추가'); addB.addEventListener('click', function () { editFolder(null, null); }); t.appendChild(addB);
     nav.appendChild(t);
-    folderTree().forEach(function (row) {
+    visibleFolderTree().forEach(function (row) {
       var f = row.f;
       var b = navItem(folderSvg(folderShape(f), f.color), f.name, live.filter(function (n) { return n.folderId === f.id; }).length,
         v.type === 'folder' && v.folderId === f.id, go({ type: 'folder', folderId: f.id }), row.depth);
       b.classList.add('nav-folder'); b.dataset.drop = f.id;
+      var chev = el('span', 'chev');
+      if (row.kids && settings.subMenu !== 'show') {
+        chev.innerHTML = ic(row.open ? 'chevD' : 'chevR');
+        chev.title = row.open ? '하위 폴더 접기' : '하위 폴더 ' + row.kids + '개 펼치기';
+        chev.setAttribute('role', 'button');
+        chev.addEventListener('click', function (e) { e.stopPropagation(); toggleExpanded(f.id); });
+      }
+      b.insertBefore(chev, b.firstChild);
       var m = el('span', 'icon-btn more'); m.innerHTML = ic('more'); m.title = '폴더 편집';
       m.addEventListener('click', function (e) { e.stopPropagation(); folderMenu(f); });
       b.replaceChild(m, b.querySelector('.more-space'));
@@ -763,7 +813,8 @@
       c.innerHTML = html; c.appendChild(el('span', null, label + (isCur ? ' (지금 폴더)' : '')));
       box.appendChild(c);
     }
-    folderTree().forEach(function (r) { chip(folderSvg(folderShape(r.f), r.f.color), pathName(r.f), r.f.id, cur === r.f.id); });
+    visibleFolderTree().forEach(function (r) { chip(folderSvg(folderShape(r.f), r.f.color), pathName(r.f), r.f.id, cur === r.f.id); });
+    if (settings.subMenu !== 'show' && folderList().some(function (f) { return parentOf(f); })) tray.appendChild(el('p', 'tray-tip', '접혀 있는 하위 폴더는 왼쪽 메뉴에서 ▸를 눌러 펼치면 여기에 나타납니다. 지금 연 폴더의 하위 폴더 칸에 바로 놓아도 됩니다.'));
     chip(ic('folder'), '폴더 없음', '', cur === null);
     tray.appendChild(box);
     tray.classList.remove('hidden');
@@ -1282,6 +1333,8 @@
     tcRow.appendChild(tcIn); tc.appendChild(tcRow);
     body.appendChild(setRow('기본 글자 색', tc, '노트 본문의 기본 글자 색입니다. "자동"은 밝은 화면에서 검정, 어두운 화면에서 흰색입니다. 검정·진한 색을 고르면 어두운 화면에서는 잘 안 보일 수 있습니다. 일부 글자만 바꾸려면 편집 화면 아래 A 버튼을 쓰세요.'));
     body.appendChild(setRow('목록 보기', seg([['grid', '격자'], ['list', '목록']], settings.layout, function (v) { settings.layout = v; saveSettings(); renderList(); })));
+    body.appendChild(setRow('격자 크기', seg(GRID_SIZES, settings.gridSize, function (v) { settings.gridSize = v; saveSettings(); renderList(); }), '목록 위의 보기 버튼에서도 바꿀 수 있습니다.'));
+    body.appendChild(setRow('왼쪽 메뉴의 하위 폴더', seg([['hide', '접어 두기'], ['show', '모두 펼치기']], settings.subMenu, function (v) { settings.subMenu = v; saveSettings(); renderDrawer(); }), '"접어 두기"는 맨 위 폴더만 보이고, 폴더 옆 ▸를 눌러야 하위 폴더가 보입니다.'));
     body.appendChild(setRow('정렬', seg([['updated', '수정일'], ['created', '만든 날짜'], ['title', '제목']], settings.sort, function (v) { settings.sort = v; saveSettings(); renderList(); })));
     var bk = el('div'); bk.style.display = 'flex'; bk.style.gap = '8px';
     var ex = el('button', 'btn small', '내보내기'); ex.addEventListener('click', exportBackup);
@@ -1419,7 +1472,12 @@
       else { state.query = ''; $('searchInput').value = ''; renderList(); }
     });
     $('searchInput').addEventListener('input', function () { state.query = this.value; renderList(); });
-    $('layoutBtn').addEventListener('click', function () { settings.layout = settings.layout === 'list' ? 'grid' : 'list'; saveSettings(); });
+    $('layoutBtn').addEventListener('click', function () {
+      var body = el('div');
+      body.appendChild(setRow('보기 방식', seg([['grid', '격자'], ['list', '목록']], settings.layout, function (v) { settings.layout = v; saveSettings(); renderList(); })));
+      body.appendChild(setRow('격자 크기', seg(GRID_SIZES, settings.gridSize, function (v) { settings.gridSize = v; if (settings.layout !== 'grid') settings.layout = 'grid'; saveSettings(); renderList(); }), '노트 카드의 크기입니다. 작게 할수록 한 화면에 노트가 많이 보입니다.'));
+      openSheet('보기 설정', body, [{ label: '닫기', primary: true }]);
+    });
     $('sortBtn').addEventListener('click', function () {
       var body = el('div');
       [['updated', '수정한 날짜순'], ['created', '만든 날짜순'], ['title', '제목순']].forEach(function (o) {
