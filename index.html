@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="마이노트">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&family=Nanum+Gothic:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Dodum&family=Nanum+Pen+Script&family=Gaegu:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&family=Nanum+Gothic:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Dodum&family=Nanum+Pen+Script&family=Gaegu:wght@400;700&family=Gowun+Batang:wght@400;700&family=Do+Hyeon&family=Jua&family=Nanum+Brush+Script&family=Hi+Melody&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -55,7 +55,8 @@
   <section id="listView" class="list-pane">
     <header class="topbar">
       <button class="icon-btn" id="menuBtn" title="메뉴" aria-label="메뉴"></button>
-      <h1 id="viewTitle" class="view-title">모든 노트</h1>
+      <button class="icon-btn hidden" id="upBtn" title="뒤로" aria-label="뒤로"></button>
+      <h1 id="viewTitle" class="view-title">마이노트</h1>
       <button class="icon-btn" id="searchBtn" title="검색" aria-label="검색"></button>
       <button class="icon-btn" id="layoutBtn" title="보기 방식" aria-label="보기 방식"></button>
       <button class="icon-btn" id="sortBtn" title="정렬" aria-label="정렬"></button>
@@ -71,8 +72,12 @@
       <span>휴지통의 노트는 30일 뒤 자동으로 삭제됩니다.</span>
       <button id="emptyTrashBtn" class="btn small">비우기</button>
     </div>
-    <div id="noteList" class="note-list grid"></div>
-    <p id="emptyMsg" class="empty-msg hidden"></p>
+    <div id="listScroll" class="list-scroll">
+      <div id="folderGrid" class="folder-grid"></div>
+      <div id="notesLabel" class="sec-label hidden">노트</div>
+      <div id="noteList" class="note-list grid"></div>
+      <p id="emptyMsg" class="empty-msg hidden"></p>
+    </div>
     <button id="fab" class="fab" title="새 노트" aria-label="새 노트"></button>
   </section>
 
@@ -92,6 +97,7 @@
       <div id="editorScroll" class="editor-scroll">
         <input id="noteTitle" class="note-title" placeholder="제목" autocomplete="off">
         <div class="note-meta">
+          <span id="noteFolderIco" class="note-folder-ico"></span>
           <select id="noteFolder" aria-label="폴더"></select>
           <span id="noteDate"></span>
         </div>
@@ -101,14 +107,13 @@
       <div id="toolbar" class="toolbar" role="toolbar" aria-label="서식">
         <select id="fontSel" title="글꼴" aria-label="글꼴"></select>
         <select id="sizeSel" title="글자 크기" aria-label="글자 크기"></select>
+        <button class="tb" id="colorBtn" title="글자 색" aria-label="글자 색"></button>
+        <button class="tb" id="hiliteBtn" title="형광펜" aria-label="형광펜"></button>
         <span class="tb-sep"></span>
         <button class="tb" data-cmd="bold" title="굵게" aria-label="굵게"></button>
         <button class="tb" data-cmd="italic" title="기울임" aria-label="기울임"></button>
         <button class="tb" data-cmd="underline" title="밑줄" aria-label="밑줄"></button>
         <button class="tb" data-cmd="strikeThrough" title="취소선" aria-label="취소선"></button>
-        <span class="tb-sep"></span>
-        <button class="tb" id="colorBtn" title="글자 색" aria-label="글자 색"></button>
-        <button class="tb" id="hiliteBtn" title="형광펜" aria-label="형광펜"></button>
         <span class="tb-sep"></span>
         <button class="tb" data-cmd="justifyLeft" title="왼쪽 정렬" aria-label="왼쪽 정렬"></button>
         <button class="tb" data-cmd="justifyCenter" title="가운데 정렬" aria-label="가운데 정렬"></button>

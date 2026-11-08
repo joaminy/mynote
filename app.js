@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.0.0';
+  var APP_VERSION = '1.1.0';
   var MAX_FILE = 5 * 1024 * 1024; // 첨부 파일 1개 최대 5MB
   var TRASH_DAYS = 30;
 
@@ -16,7 +16,12 @@
     { label: '나눔명조', value: 'Nanum Myeongjo' },
     { label: '고운돋움', value: 'Gowun Dodum' },
     { label: '나눔펜 손글씨', value: 'Nanum Pen Script' },
-    { label: '개구 손글씨', value: 'Gaegu' }
+    { label: '개구 손글씨', value: 'Gaegu' },
+    { label: '고운바탕', value: 'Gowun Batang' },
+    { label: '도현', value: 'Do Hyeon' },
+    { label: '주아', value: 'Jua' },
+    { label: '나눔붓글씨', value: 'Nanum Brush Script' },
+    { label: '하이멜로디', value: 'Hi Melody' }
   ];
   var APP_FONTS = FONTS.slice(1);
   var SIZES = [12, 14, 16, 18, 20, 24, 28, 36];
@@ -24,7 +29,9 @@
     { name: '기본', value: 'var(--ink)' },
     { name: '빨강', value: '#E53935' }, { name: '주황', value: '#F57C00' }, { name: '노랑', value: '#C9A100' },
     { name: '초록', value: '#2E9E4F' }, { name: '파랑', value: '#1E73E8' }, { name: '남색', value: '#3949AB' },
-    { name: '보라', value: '#8E44CF' }, { name: '분홍', value: '#D81B78' }, { name: '회색', value: '#8A8A8A' }
+    { name: '보라', value: '#8E44CF' }, { name: '분홍', value: '#D81B78' }, { name: '회색', value: '#8A8A8A' },
+    { name: '하늘', value: '#039BE5' }, { name: '청록', value: '#00897B' }, { name: '연두', value: '#7CB342' },
+    { name: '갈색', value: '#8D6E63' }, { name: '진회색', value: '#546E7A' }
   ];
   var HILITE_COLORS = [
     { name: '없음', value: 'transparent' },
@@ -36,7 +43,7 @@
     { name: '기본', key: '' }, { name: '노랑', key: 'yellow' }, { name: '초록', key: 'green' },
     { name: '파랑', key: 'blue' }, { name: '분홍', key: 'pink' }, { name: '보라', key: 'purple' }, { name: '회색', key: 'gray' }
   ];
-  var FOLDER_COLORS = ['#F08A24', '#E53935', '#2E9E4F', '#1E73E8', '#8E44CF', '#D81B78', '#00897B', '#8A8A8A'];
+  var FOLDER_COLORS = ['#F08A24', '#F6B400', '#E53935', '#D81B78', '#8E44CF', '#3949AB', '#1E73E8', '#039BE5', '#00897B', '#2E9E4F', '#8D6E63', '#8A8A8A'];
   var ACCENTS = [
     { name: '주황', value: '#F08A24' }, { name: '파랑', value: '#2D7FF9' }, { name: '초록', value: '#23A26D' },
     { name: '보라', value: '#8B5CF6' }, { name: '분홍', value: '#E8508A' }, { name: '회색', value: '#6B7280' }
@@ -45,6 +52,7 @@
   /* ---------------- 아이콘 ---------------- */
   var I = {
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    home: '<path d="M4 11l8-6.5 8 6.5V20h-5.5v-5.5h-5V20H4z"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     back: '<path d="M15 5l-7 7 7 7"/>',
@@ -131,7 +139,7 @@
   }
 
   /* ---------------- 설정 (기기별로 저장) ---------------- */
-  var DEFAULT_SETTINGS = { theme: 'system', accent: '#F08A24', font: 'Noto Sans KR', size: 16, layout: 'grid', sort: 'updated' };
+  var DEFAULT_SETTINGS = { theme: 'system', accent: '#F08A24', font: 'Noto Sans KR', size: 16, layout: 'grid', sort: 'updated', textColor: '', recentColors: [] };
   var settings = (function () {
     try { return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(localStorage.getItem('mynote-settings') || '{}')); }
     catch (e) { return Object.assign({}, DEFAULT_SETTINGS); }
@@ -145,6 +153,7 @@
     root.style.setProperty('--accent', settings.accent);
     root.style.setProperty('--app-font', "'" + settings.font + "', system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif");
     root.style.setProperty('--editor-size', settings.size + 'px');
+    root.style.setProperty('--editor-ink', /^#[0-9a-f]{3,8}$/i.test(settings.textColor || '') ? settings.textColor : 'var(--ink)');
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', dark ? '#1E1E1E' : '#FFFFFF');
     $('noteList').className = 'note-list ' + (settings.layout === 'list' ? 'list' : 'grid');
@@ -156,7 +165,7 @@
   var store = null, fb = null, currentUser = null;
   var state = {
     notes: new Map(), folders: new Map(),
-    view: { type: 'all', folderId: null },
+    view: { type: 'home', folderId: null },
     query: '',
     currentId: null, draft: null, dirty: false, shownAt: 0,
     sync: { local: true }, online: navigator.onLine,
@@ -261,10 +270,95 @@
       .catch(function (e) { $('loginMsg').textContent = authErr(e); });
   }
 
+  /* ================= 폴더 모양·색 ================= */
+  var FOLDER_SHAPES = [
+    { key: 'folder', name: '기본' }, { key: 'round', name: '둥근' }, { key: 'binder', name: '바인더' },
+    { key: 'box', name: '상자' }, { key: 'heart', name: '하트' }, { key: 'star', name: '별' }
+  ];
+  function safeColor(c) { return /^#[0-9a-f]{3,8}$/i.test(c || '') ? c : '#8A8A8A'; }
+  function folderShape(f) { var s = f && f.shape; return FOLDER_SHAPES.some(function (x) { return x.key === s; }) ? s : 'folder'; }
+  /* 폴더 그림 (가로 56 x 세로 48) */
+  function folderSvg(shape, color) {
+    var c = safeColor(color), b;
+    if (shape === 'round') {
+      b = '<path d="M4 14a7 7 0 017-7h11c1.2 0 2.3.5 3 1.3L29 12h16a7 7 0 017 7v18a7 7 0 01-7 7H11a7 7 0 01-7-7z" fill="' + c + '"/>' +
+          '<path d="M4 22a7 7 0 017-7h34a7 7 0 017 7v15a7 7 0 01-7 7H11a7 7 0 01-7-7z" fill="#fff" fill-opacity=".25"/>';
+    } else if (shape === 'binder') {
+      b = '<rect x="6" y="4" width="44" height="40" rx="4" fill="' + c + '"/>' +
+          '<path d="M10 4h7v40h-7a4 4 0 01-4-4V8a4 4 0 014-4z" fill="#000" fill-opacity=".16"/>' +
+          '<circle cx="13.5" cy="13" r="2.3" fill="#fff"/><circle cx="13.5" cy="24" r="2.3" fill="#fff"/><circle cx="13.5" cy="35" r="2.3" fill="#fff"/>' +
+          '<rect x="24" y="12" width="19" height="8" rx="2" fill="#fff" fill-opacity=".75"/>';
+    } else if (shape === 'box') {
+      b = '<path d="M8 16h40v25a3 3 0 01-3 3H11a3 3 0 01-3-3z" fill="' + c + '"/>' +
+          '<path d="M5 9a3 3 0 013-3h40a3 3 0 013 3v7H5z" fill="' + c + '"/><path d="M5 9a3 3 0 013-3h40a3 3 0 013 3v7H5z" fill="#000" fill-opacity=".14"/>' +
+          '<path d="M22 24h12" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>';
+    } else if (shape === 'heart') {
+      b = '<path d="M28 44S5 31 5 17.5A10.5 10.5 0 0128 11a10.5 10.5 0 0123 6.5C51 31 28 44 28 44z" fill="' + c + '"/>' +
+          '<ellipse cx="16" cy="16" rx="4.5" ry="3" fill="#fff" fill-opacity=".35" transform="rotate(-30 16 16)"/>';
+    } else if (shape === 'star') {
+      b = '<path d="M28 3l7.2 14.6 16.1 2.3-11.6 11.4 2.7 16-14.4-7.6-14.4 7.6 2.7-16L4.7 19.9l16.1-2.3z" fill="' + c + '" stroke="' + c + '" stroke-width="2" stroke-linejoin="round"/>';
+    } else {
+      b = '<path d="M4 10a3 3 0 013-3h14l5 5h23a3 3 0 013 3v26a3 3 0 01-3 3H7a3 3 0 01-3-3z" fill="' + c + '"/>' +
+          '<path d="M4 18a3 3 0 013-3h42a3 3 0 013 3v23a3 3 0 01-3 3H7a3 3 0 01-3-3z" fill="#fff" fill-opacity=".25"/>';
+    }
+    return '<svg class="fsvg" viewBox="0 0 56 48" aria-hidden="true">' + b + '</svg>';
+  }
+
+  /* ================= 폴더 구조 (폴더 안의 폴더) ================= */
+  function folderList() { return Array.from(state.folders.values()); }
+  function parentOf(f) { return f && f.parentId && f.parentId !== f.id && state.folders.has(f.parentId) ? state.folders.get(f.parentId) : null; }
+  function byCreated(a, b) { return (a.createdAt || 0) - (b.createdAt || 0); }
+  function childFolders(pid) {
+    return folderList().filter(function (f) { var p = parentOf(f); return (p ? p.id : null) === (pid || null); }).sort(byCreated);
+  }
+  function folderPath(f) {
+    var path = [], guard = 0;
+    while (f && guard++ < 30) { path.unshift(f); f = parentOf(f); }
+    return path;
+  }
+  function isInside(f, ancestorId) {
+    var cur = parentOf(f), guard = 0;
+    while (cur && guard++ < 30) { if (cur.id === ancestorId) return true; cur = parentOf(cur); }
+    return false;
+  }
+  function folderTree() {
+    var out = [], seen = {};
+    (function walk(pid, depth) {
+      childFolders(pid).forEach(function (f) {
+        if (seen[f.id]) return; seen[f.id] = true;
+        out.push({ f: f, depth: depth }); walk(f.id, depth + 1);
+      });
+    })(null, 0);
+    return out;
+  }
+  function pathName(f) { return folderPath(f).map(function (x) { return x.name; }).join(' › '); }
+  function liveNotes() { return Array.from(state.notes.values()).filter(function (n) { return !n.trashed; }); }
+
+  /* ================= 화면 이동 ================= */
+  function goView(view) {
+    state.view = view;
+    state.query = ''; $('searchInput').value = ''; $('searchBar').classList.add('hidden');
+    closeDrawer();
+    // 휴대폰의 '뒤로' 버튼으로 상위 폴더·첫 화면으로 돌아가도록 기록을 남김
+    if (!isWide() && view.type !== 'home' && !(history.state && history.state.mynote)) {
+      try { history.pushState({ mynote: 'view' }, ''); } catch (e) { /* 무시 */ }
+    }
+    renderAll();
+    $('listScroll').scrollTop = 0;
+  }
+  function goUp() {
+    var v = state.view;
+    if (v.type === 'folder') {
+      var p = parentOf(state.folders.get(v.folderId));
+      goView(p ? { type: 'folder', folderId: p.id } : { type: 'home' });
+    } else goView({ type: 'home' });
+  }
+
   /* ================= 목록 그리기 ================= */
   function visibleNotes() {
     var q = state.query.trim().toLowerCase();
     var v = state.view;
+    if (!q && v.type === 'home') return []; // 첫 화면에는 폴더만 보임
     var arr = Array.from(state.notes.values()).filter(function (n) {
       if (q) return !n.trashed && ((n.title || '') + '\n' + (n.text || '')).toLowerCase().indexOf(q) !== -1;
       if (v.type === 'trash') return n.trashed;
@@ -285,20 +379,97 @@
   function viewTitle() {
     if (state.query.trim()) return '검색 결과';
     var v = state.view;
+    if (v.type === 'home') return '마이노트';
+    if (v.type === 'all') return '모든 노트';
     if (v.type === 'fav') return '즐겨찾기';
     if (v.type === 'trash') return '휴지통';
     if (v.type === 'none') return '폴더 없음';
-    if (v.type === 'folder') { var f = state.folders.get(v.folderId); return f ? f.name : '폴더'; }
-    return '모든 노트';
+    var f = state.folders.get(v.folderId); return f ? f.name : '폴더';
   }
-  function renderAll() { renderList(); renderDrawer(); }
+  function renderAll() {
+    if (state.view.type === 'folder' && !state.folders.has(state.view.folderId)) state.view = { type: 'home' };
+    renderList(); renderDrawer();
+  }
+
+  function folderTile(o) {
+    var t = el('div', 'ftile' + (o.add ? ' add' : ''));
+    t.setAttribute('role', 'button'); t.tabIndex = 0;
+    var ico = el('div', 'ftile-ico');
+    ico.innerHTML = o.add ? ic('plus') : folderSvg(o.shape, o.color);
+    if (o.badge) { var bd = el('span', 'ftile-badge'); bd.innerHTML = ic(o.badge, o.badge === 'star'); ico.appendChild(bd); }
+    t.appendChild(ico);
+    t.appendChild(el('div', 'ftile-name', o.name));
+    if (o.sub) t.appendChild(el('div', 'ftile-sub', o.sub));
+    if (o.onMore) {
+      var m = el('button', 'icon-btn ftile-more'); m.innerHTML = ic('more'); m.title = '폴더 편집'; m.setAttribute('aria-label', '폴더 편집');
+      m.addEventListener('click', function (e) { e.stopPropagation(); o.onMore(); });
+      t.appendChild(m);
+    }
+    t.addEventListener('click', o.onClick);
+    t.addEventListener('keydown', function (e) { if (e.key === 'Enter') o.onClick(); });
+    return t;
+  }
+  function folderSub(f, live) {
+    var n = live.filter(function (x) { return x.folderId === f.id; }).length;
+    var k = childFolders(f.id).length;
+    return '노트 ' + n + (k ? ' · 폴더 ' + k : '');
+  }
+  var SYS_COLOR = '#9AA0A6';
+  function renderFolderGrid() {
+    var grid = $('folderGrid'); grid.textContent = '';
+    var v = state.view, live = liveNotes();
+    var show = !state.query.trim() && (v.type === 'home' || v.type === 'folder');
+    grid.classList.toggle('hidden', !show);
+    if (!show) return;
+    var parentId = v.type === 'folder' ? v.folderId : null;
+    var kids = childFolders(parentId);
+    if (v.type === 'folder') grid.appendChild(el('div', 'sec-label', '폴더'));
+    if (v.type === 'home') {
+      grid.appendChild(folderTile({ shape: 'folder', color: SYS_COLOR, badge: 'notes', name: '모든 노트', sub: '노트 ' + live.length, onClick: function () { goView({ type: 'all' }); } }));
+      grid.appendChild(folderTile({ shape: 'folder', color: SYS_COLOR, badge: 'star', name: '즐겨찾기', sub: '노트 ' + live.filter(function (n) { return n.favorite; }).length, onClick: function () { goView({ type: 'fav' }); } }));
+    }
+    kids.forEach(function (f) {
+      grid.appendChild(folderTile({ shape: folderShape(f), color: f.color, name: f.name, sub: folderSub(f, live),
+        onClick: function () { goView({ type: 'folder', folderId: f.id }); }, onMore: function () { folderMenu(f); } }));
+    });
+    if (v.type === 'home') {
+      var none = live.filter(function (n) { return !n.folderId || !state.folders.has(n.folderId); }).length;
+      if (none) grid.appendChild(folderTile({ shape: 'folder', color: SYS_COLOR, badge: 'folder', name: '폴더 없음', sub: '노트 ' + none, onClick: function () { goView({ type: 'none' }); } }));
+    }
+    grid.appendChild(folderTile({ add: true, name: v.type === 'folder' ? '하위 폴더 추가' : '새 폴더', onClick: function () { editFolder(null, parentId); } }));
+  }
+  function renderCrumbs(count) {
+    var box = $('countLabel'); box.textContent = '';
+    var v = state.view;
+    if (v.type === 'folder' && !state.query.trim()) {
+      var f = state.folders.get(v.folderId);
+      var home = el('button', 'crumb', '홈'); home.addEventListener('click', function () { goView({ type: 'home' }); }); box.appendChild(home);
+      folderPath(f).forEach(function (p, i, arr) {
+        box.appendChild(el('span', 'crumb-sep', '›'));
+        if (i === arr.length - 1) box.appendChild(el('span', 'crumb-cur', p.name));
+        else { var b = el('button', 'crumb', p.name); b.addEventListener('click', function () { goView({ type: 'folder', folderId: p.id }); }); box.appendChild(b); }
+      });
+      box.appendChild(el('span', 'crumb-count', ' · 노트 ' + count + '개'));
+    } else if (v.type === 'home' && !state.query.trim()) {
+      box.textContent = '폴더 ' + childFolders(null).length + '개';
+    } else box.textContent = '노트 ' + count + '개';
+  }
 
   function renderList() {
-    var list = $('noteList'), notes = visibleNotes();
-    $('viewTitle').textContent = viewTitle();
-    $('countLabel').textContent = '노트 ' + notes.length + '개';
-    $('trashBar').classList.toggle('hidden', !(state.view.type === 'trash' && !state.query.trim()));
-    $('fab').classList.toggle('hidden', state.view.type === 'trash');
+    var list = $('noteList'), notes = visibleNotes(), v = state.view, q = state.query.trim();
+    var title = $('viewTitle'); title.textContent = '';
+    if (v.type === 'folder' && !q) {
+      var cf = state.folders.get(v.folderId);
+      var ti = el('span', 'tico'); ti.innerHTML = folderSvg(folderShape(cf), cf && cf.color); title.appendChild(ti);
+    }
+    title.appendChild(document.createTextNode(viewTitle()));
+    $('upBtn').classList.toggle('hidden', v.type === 'home' && !q);
+    renderCrumbs(notes.length);
+    renderFolderGrid();
+    $('trashBar').classList.toggle('hidden', !(v.type === 'trash' && !q));
+    $('fab').classList.toggle('hidden', v.type === 'trash');
+    var showLabel = v.type === 'folder' && !q && notes.length > 0;
+    $('notesLabel').classList.toggle('hidden', !showLabel);
     list.textContent = '';
     notes.forEach(function (n) {
       var c = el('div', 'card');
@@ -311,7 +482,10 @@
       c.appendChild(el('div', 'card-body', body.slice(0, 300)));
       var foot = el('div', 'card-foot');
       var f = n.folderId && state.folders.get(n.folderId);
-      if (f) { var d = el('span', 'fdot'); d.style.background = f.color; d.title = f.name; foot.appendChild(d); }
+      if (f && !(v.type === 'folder' && v.folderId === f.id && !q)) {
+        var chip = el('span', 'fchip'); chip.innerHTML = folderSvg(folderShape(f), f.color);
+        chip.appendChild(el('span', null, f.name)); foot.appendChild(chip);
+      }
       if (n.favorite) { var s = el('span', 'star'); s.innerHTML = ic('star', true); foot.appendChild(s); }
       if (n.attachments && n.attachments.length) { var a = el('span'); a.innerHTML = ic('clip'); foot.appendChild(a); }
       foot.appendChild(el('span', 'date', fmtDate(n.updatedAt)));
@@ -320,20 +494,21 @@
       c.addEventListener('keydown', function (e) { if (e.key === 'Enter') onCardClick(n.id); });
       list.appendChild(c);
     });
-    var em = $('emptyMsg');
+    var em = $('emptyMsg'), msg = '';
     if (!notes.length) {
-      em.classList.remove('hidden');
-      em.textContent = state.query.trim() ? '"' + state.query.trim() + '"에 맞는 노트가 없습니다.'
-        : state.view.type === 'trash' ? '휴지통이 비어 있습니다.'
-          : '노트가 없습니다.\n오른쪽 아래 + 버튼을 눌러 첫 노트를 만들어 보세요.';
-      em.style.whiteSpace = 'pre-line';
-    } else em.classList.add('hidden');
+      if (q) msg = '"' + q + '"에 맞는 노트가 없습니다.';
+      else if (v.type === 'trash') msg = '휴지통이 비어 있습니다.';
+      else if (v.type === 'folder') { if (!childFolders(v.folderId).length) msg = '이 폴더는 비어 있습니다.\n+ 버튼으로 노트를 만들거나, "하위 폴더 추가"로 폴더 안에 폴더를 만드세요.'; }
+      else if (v.type !== 'home') msg = '노트가 없습니다.\n오른쪽 아래 + 버튼을 눌러 노트를 만들어 보세요.';
+    }
+    em.textContent = msg; em.style.whiteSpace = 'pre-line';
+    em.classList.toggle('hidden', !msg);
   }
 
-  function navItem(icon, label, count, active, onClick, dotColor) {
+  function navItem(iconHtml, label, count, active, onClick, depth) {
     var b = el('button', 'nav-item' + (active ? ' active' : ''));
-    if (dotColor) { var d = el('span', 'dot'); d.style.background = dotColor; b.appendChild(d); }
-    else { var i = el('span'); i.innerHTML = ic(icon); b.appendChild(i); }
+    if (depth) b.style.paddingLeft = (12 + depth * 18) + 'px';
+    var i = el('span', 'nav-ico'); i.innerHTML = iconHtml; b.appendChild(i);
     b.appendChild(el('span', 'nav-label', label));
     if (count != null) b.appendChild(el('span', 'count', String(count)));
     b.appendChild(el('span', 'more-space'));
@@ -345,25 +520,27 @@
     var all = Array.from(state.notes.values());
     var live = all.filter(function (n) { return !n.trashed; });
     var v = state.view;
-    function go(view) { return function () { state.view = view; state.query = ''; $('searchInput').value = ''; $('searchBar').classList.add('hidden'); closeDrawer(); renderAll(); }; }
-    nav.appendChild(navItem('notes', '모든 노트', live.length, v.type === 'all', go({ type: 'all' })));
-    nav.appendChild(navItem('star', '즐겨찾기', live.filter(function (n) { return n.favorite; }).length, v.type === 'fav', go({ type: 'fav' })));
+    function go(view) { return function () { goView(view); }; }
+    nav.appendChild(navItem(ic('home'), '홈 (폴더 보기)', null, v.type === 'home', go({ type: 'home' })));
+    nav.appendChild(navItem(ic('notes'), '모든 노트', live.length, v.type === 'all', go({ type: 'all' })));
+    nav.appendChild(navItem(ic('star'), '즐겨찾기', live.filter(function (n) { return n.favorite; }).length, v.type === 'fav', go({ type: 'fav' })));
     var t = el('div', 'nav-title'); t.appendChild(el('span', null, '폴더'));
-    var addB = el('button', null, '+ 폴더 추가'); addB.addEventListener('click', function () { editFolder(null); }); t.appendChild(addB);
+    var addB = el('button', null, '+ 폴더 추가'); addB.addEventListener('click', function () { editFolder(null, null); }); t.appendChild(addB);
     nav.appendChild(t);
-    var folders = Array.from(state.folders.values()).sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
-    folders.forEach(function (f) {
-      var b = navItem(null, f.name, live.filter(function (n) { return n.folderId === f.id; }).length,
-        v.type === 'folder' && v.folderId === f.id, go({ type: 'folder', folderId: f.id }), f.color);
+    folderTree().forEach(function (row) {
+      var f = row.f;
+      var b = navItem(folderSvg(folderShape(f), f.color), f.name, live.filter(function (n) { return n.folderId === f.id; }).length,
+        v.type === 'folder' && v.folderId === f.id, go({ type: 'folder', folderId: f.id }), row.depth);
+      b.classList.add('nav-folder');
       var m = el('span', 'icon-btn more'); m.innerHTML = ic('more'); m.title = '폴더 편집';
       m.addEventListener('click', function (e) { e.stopPropagation(); folderMenu(f); });
       b.replaceChild(m, b.querySelector('.more-space'));
       nav.appendChild(b);
     });
     var none = live.filter(function (n) { return !n.folderId || !state.folders.has(n.folderId); }).length;
-    nav.appendChild(navItem('folder', '폴더 없음', none, v.type === 'none', go({ type: 'none' })));
+    nav.appendChild(navItem(ic('folder'), '폴더 없음', none, v.type === 'none', go({ type: 'none' })));
     nav.appendChild(el('div', 'nav-title', ' '));
-    nav.appendChild(navItem('trash', '휴지통', all.length - live.length, v.type === 'trash', go({ type: 'trash' })));
+    nav.appendChild(navItem(ic('trash'), '휴지통', all.length - live.length, v.type === 'trash', go({ type: 'trash' })));
   }
   function renderDrawerFoot() {
     var f = $('drawerFoot');
@@ -385,40 +562,80 @@
   function openDrawer() { $('mainView').classList.add('drawer-open'); }
   function closeDrawer() { $('mainView').classList.remove('drawer-open'); }
 
-  /* ================= 폴더 ================= */
-  function editFolder(folder) {
+  /* ================= 폴더 만들기·편집 ================= */
+  function editFolder(folder, parentIdDefault) {
     var body = el('div');
+    var chosen = { color: folder ? safeColor(folder.color) : FOLDER_COLORS[0], shape: folder ? folderShape(folder) : 'folder' };
+    var preview = el('div', 'folder-preview');
+    var pv = el('div', 'pv-ico'); preview.appendChild(pv);
     var inp = el('input'); inp.type = 'text'; inp.placeholder = '폴더 이름'; inp.value = folder ? folder.name : ''; inp.maxLength = 40;
-    body.appendChild(inp);
-    var chosen = folder ? folder.color : FOLDER_COLORS[0];
-    var sw = el('div', 'swatches'); sw.style.marginTop = '14px';
+    preview.appendChild(inp);
+    body.appendChild(preview);
+
+    body.appendChild(el('p', 'set-label', '폴더 모양'));
+    var shapes = el('div', 'shape-row');
+    body.appendChild(shapes);
+
+    body.appendChild(el('p', 'set-label', '폴더 색'));
+    var sw = el('div', 'swatches');
     FOLDER_COLORS.forEach(function (c) {
-      var s = el('button', 'sw' + (c === chosen ? ' sel' : '')); s.style.background = c; s.title = c;
-      s.addEventListener('click', function () { chosen = c; sw.querySelectorAll('.sw').forEach(function (x) { x.classList.remove('sel'); }); s.classList.add('sel'); });
+      var s = el('button', 'sw'); s.style.background = c; s.title = c; s.dataset.c = c;
+      s.addEventListener('click', function () { chosen.color = c; refresh(); });
       sw.appendChild(s);
     });
     body.appendChild(sw);
-    openSheet(folder ? '폴더 편집' : '새 폴더', body, [
+    var row = el('label', 'sw-custom'); row.appendChild(el('span', null, '직접 고르기'));
+    var cin = el('input'); cin.type = 'color'; cin.value = /^#[0-9a-f]{6}$/i.test(chosen.color) ? chosen.color : '#F08A24';
+    cin.addEventListener('input', function () { chosen.color = cin.value; refresh(); });
+    row.appendChild(cin); body.appendChild(row);
+
+    body.appendChild(el('p', 'set-label', '위치 (상위 폴더)'));
+    var psel = el('select', 'parent-sel');
+    var o0 = el('option', null, '맨 위 (홈)'); o0.value = ''; psel.appendChild(o0);
+    folderTree().forEach(function (r) {
+      if (folder && (r.f.id === folder.id || isInside(r.f, folder.id))) return; // 자기 자신과 그 안의 폴더는 고를 수 없음
+      var op = el('option', null, '  '.repeat(r.depth) + r.f.name); op.value = r.f.id; psel.appendChild(op);
+    });
+    var curParent = folder ? (parentOf(folder) ? parentOf(folder).id : '') : (parentIdDefault || '');
+    psel.value = curParent;
+    body.appendChild(psel);
+
+    function refresh() {
+      pv.innerHTML = folderSvg(chosen.shape, chosen.color);
+      shapes.textContent = '';
+      FOLDER_SHAPES.forEach(function (s) {
+        var b = el('button', 'shape-opt' + (s.key === chosen.shape ? ' sel' : ''));
+        b.innerHTML = folderSvg(s.key, chosen.color); b.appendChild(el('span', null, s.name)); b.title = s.name;
+        b.addEventListener('click', function () { chosen.shape = s.key; refresh(); });
+        shapes.appendChild(b);
+      });
+      sw.querySelectorAll('.sw').forEach(function (x) { x.classList.toggle('sel', x.dataset.c === chosen.color); });
+    }
+    refresh();
+    openSheet(folder ? '폴더 편집' : (parentIdDefault ? '하위 폴더 만들기' : '새 폴더'), body, [
       { label: '취소' },
       { label: '저장', primary: true, run: function () {
         var name = inp.value.trim();
         if (!name) { toast('폴더 이름을 입력하세요.'); return false; }
         var f = folder ? Object.assign({}, folder) : { id: 'f_' + uid(), createdAt: Date.now() };
-        f.name = name; f.color = chosen;
+        f.name = name; f.color = chosen.color; f.shape = chosen.shape; f.parentId = psel.value || null;
         store.saveFolder(f);
-        if (!folder) { state.view = { type: 'folder', folderId: f.id }; closeDrawer(); }
+        toast(folder ? '폴더를 바꿨습니다.' : '"' + name + '" 폴더를 만들었습니다.');
       } }
     ]);
-    setTimeout(function () { inp.focus(); }, 50);
+    if (!folder) setTimeout(function () { inp.focus(); }, 50);
   }
   function folderMenu(f) {
     var body = el('div');
-    body.appendChild(menuItem('edit', '이름·색 바꾸기', function () { closeSheet(); editFolder(f); }));
-    body.appendChild(menuItem('trash', '폴더 삭제 (노트는 "폴더 없음"으로 이동)', function () {
+    body.appendChild(menuItem('edit', '이름·모양·색·위치 바꾸기', function () { closeSheet(); editFolder(f); }));
+    body.appendChild(menuItem('plus', '이 폴더 안에 폴더 만들기', function () { closeSheet(); editFolder(null, f.id); }));
+    body.appendChild(menuItem('trash', '폴더 삭제 (안의 노트·폴더는 한 단계 위로 이동)', function () {
       closeSheet();
-      state.notes.forEach(function (n) { if (n.folderId === f.id) { var c = Object.assign({}, n, { folderId: null }); store.saveNote(c); } });
+      var p = parentOf(f), pid = p ? p.id : null;
+      state.notes.forEach(function (n) { if (n.folderId === f.id) store.saveNote(Object.assign({}, n, { folderId: pid })); });
+      childFolders(f.id).forEach(function (c) { store.saveFolder(Object.assign({}, c, { parentId: pid })); });
       store.deleteFolder(f.id);
-      if (state.view.folderId === f.id) state.view = { type: 'all' };
+      if (state.view.type === 'folder' && state.view.folderId === f.id) goView(pid ? { type: 'folder', folderId: pid } : { type: 'home' });
       toast('폴더를 삭제했습니다.');
     }, true));
     openSheet(f.name, body, [{ label: '닫기' }]);
@@ -476,10 +693,13 @@
     var n = getCurrent(); if (!n) return;
     var sel = $('noteFolder'); sel.textContent = '';
     var o = el('option', null, '폴더 없음'); o.value = ''; sel.appendChild(o);
-    Array.from(state.folders.values()).sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); }).forEach(function (f) {
-      var op = el('option', null, f.name); op.value = f.id; sel.appendChild(op);
+    folderTree().forEach(function (r) {
+      var op = el('option', null, '\u00A0\u00A0\u00A0'.repeat(r.depth) + r.f.name); op.value = r.f.id; sel.appendChild(op);
     });
-    sel.value = n.folderId && state.folders.has(n.folderId) ? n.folderId : '';
+    var cur = n.folderId && state.folders.get(n.folderId);
+    sel.value = cur ? cur.id : '';
+    $('noteFolderIco').innerHTML = cur ? folderSvg(folderShape(cur), cur.color) : ic('folder');
+    sel.title = cur ? pathName(cur) : '폴더 없음';
   }
   function closeEditor() {
     flushSave(true);
@@ -740,7 +960,7 @@
     var style = {};
     if (kind === 'font') style.fontFamily = value;
     if (kind === 'size') style.fontSize = value;
-    if (kind === 'color') style.color = value;
+    if (kind === 'color') { style.color = value; setColorBar(value); }
     if (collapsed) { caretSpan(style); markDirty(); return; }
     if (kind === 'font') exec('fontName', value === 'inherit' ? 'inherit' : value, false);
     if (kind === 'size') exec('fontSize', '7', false);
@@ -806,9 +1026,24 @@
     });
     p.appendChild(sw);
     if (kind === 'color') {
+      var recent = (settings.recentColors || []).filter(function (c) { return /^#[0-9a-f]{6}$/i.test(c); });
+      if (recent.length) {
+        p.appendChild(el('h3', 'pal-sub', '최근 직접 고른 색'));
+        var rs = el('div', 'swatches');
+        recent.forEach(function (c) {
+          var b = el('button', 'sw'); b.style.background = c; b.title = c; keepFocus(b);
+          b.addEventListener('click', function () { applyInline('color', c); hidePalette(); });
+          rs.appendChild(b);
+        });
+        p.appendChild(rs);
+      }
       var row = el('label', 'sw-custom'); row.appendChild(el('span', null, '직접 고르기'));
-      var inp = el('input'); inp.type = 'color'; inp.value = '#E53935';
-      inp.addEventListener('change', function () { applyInline('color', inp.value); hidePalette(); });
+      var inp = el('input'); inp.type = 'color'; inp.value = recent[0] || '#E53935';
+      inp.addEventListener('change', function () {
+        settings.recentColors = [inp.value].concat((settings.recentColors || []).filter(function (c) { return c !== inp.value; })).slice(0, 8);
+        saveSettings();
+        applyInline('color', inp.value); hidePalette();
+      });
       row.appendChild(inp); p.appendChild(row);
     }
     p.classList.remove('hidden');
@@ -817,6 +1052,10 @@
   function keepFocus(b) {
     b.addEventListener('pointerdown', function (e) { e.preventDefault(); });
     b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+  }
+  function setColorBar(c) {
+    var bar = document.getElementById('colorBar');
+    if (bar) bar.setAttribute('fill', c === 'var(--ink)' ? 'currentColor' : c);
   }
   function hidePalette() { $('palette').classList.add('hidden'); }
 
@@ -882,6 +1121,14 @@
     ss.value = String(settings.size);
     ss.addEventListener('change', function () { settings.size = Number(ss.value); saveSettings(); });
     body.appendChild(setRow('기본 글자 크기', ss));
+    var tc = el('div', 'swatches');
+    [{ name: '자동', value: '' }].concat(TEXT_COLORS.slice(1)).forEach(function (c) {
+      var b = el('button', 'sw' + ((settings.textColor || '') === c.value ? ' sel' : '')); b.title = c.name;
+      if (c.value) b.style.background = c.value; else b.textContent = '자동';
+      b.addEventListener('click', function () { settings.textColor = c.value; saveSettings(); tc.querySelectorAll('.sw').forEach(function (x) { x.classList.remove('sel'); }); b.classList.add('sel'); });
+      tc.appendChild(b);
+    });
+    body.appendChild(setRow('기본 글자 색', tc, '노트 본문의 기본 글자 색입니다. "자동"은 밝은 화면에서 검정, 어두운 화면에서 흰색입니다. 일부 글자만 바꾸려면 편집 화면 아래 A 버튼을 쓰세요.'));
     body.appendChild(setRow('목록 보기', seg([['grid', '격자'], ['list', '목록']], settings.layout, function (v) { settings.layout = v; saveSettings(); renderList(); })));
     body.appendChild(setRow('정렬', seg([['updated', '수정일'], ['created', '만든 날짜'], ['title', '제목']], settings.sort, function (v) { settings.sort = v; saveSettings(); renderList(); })));
     var bk = el('div'); bk.style.display = 'flex'; bk.style.gap = '8px';
@@ -977,7 +1224,8 @@
     $('undoBtn').innerHTML = ic('undo'); $('redoBtn').innerHTML = ic('redo');
     var map = { bold: 'bold', italic: 'italic', underline: 'underline', strikeThrough: 'strike', justifyLeft: 'alignL', justifyCenter: 'alignC', justifyRight: 'alignR', insertOrderedList: 'ol' };
     document.querySelectorAll('.tb[data-cmd]').forEach(function (b) { b.innerHTML = ic(map[b.dataset.cmd]); });
-    $('colorBtn').innerHTML = ic('color').replace('</svg>', '<rect x="5" y="18" width="14" height="3" rx="1" fill="#E53935" stroke="none"/></svg>');
+    $('colorBtn').innerHTML = ic('color').replace('</svg>', '<rect id="colorBar" x="5" y="18" width="14" height="3" rx="1" fill="#E53935" stroke="none"/></svg>');
+    $('upBtn').innerHTML = ic('back');
     $('hiliteBtn').innerHTML = ic('hilite').replace('</svg>', '<rect x="4" y="19" width="16" height="3" rx="1" fill="#FFD600" stroke="none"/></svg>');
     $('checkBtn').innerHTML = ic('check'); $('ulBtn').innerHTML = ic('ul'); $('clearBtn').innerHTML = ic('clear');
     var fsel = $('fontSel');
@@ -1003,9 +1251,16 @@
 
     // 목록 화면
     $('menuBtn').addEventListener('click', openDrawer);
+    $('upBtn').addEventListener('click', function () { if (state.query.trim()) { state.query = ''; $('searchInput').value = ''; $('searchBar').classList.add('hidden'); renderList(); } else goUp(); });
     $('scrim').addEventListener('click', closeDrawer);
     $('settingsBtn').addEventListener('click', openSettings);
-    $('fab').addEventListener('click', newNote);
+    $('fab').addEventListener('click', function () {
+      if (state.view.type !== 'home') { newNote(); return; }
+      var body = el('div');
+      body.appendChild(menuItem('edit', '새 노트 (폴더 없음)', function () { closeSheet(); newNote(); }));
+      body.appendChild(menuItem('folder', '새 폴더', function () { closeSheet(); editFolder(null, null); }));
+      openSheet('만들기', body, [{ label: '닫기' }]);
+    });
     $('searchBtn').addEventListener('click', function () {
       var bar = $('searchBar'); bar.classList.toggle('hidden');
       if (!bar.classList.contains('hidden')) $('searchInput').focus();
@@ -1030,7 +1285,11 @@
 
     // 편집 화면
     $('backBtn').addEventListener('click', closeEditorOrBack);
-    window.addEventListener('popstate', function () { if ($('mainView').classList.contains('editing') && !isWide()) closeEditor(); });
+    window.addEventListener('popstate', function () {
+      if ($('mainView').classList.contains('editing') && !isWide()) { closeEditor(); return; }
+      if (!$('sheetWrap').classList.contains('hidden')) closeSheet();
+      if (state.view.type !== 'home' || state.query.trim()) goUp();
+    });
     $('noteTitle').addEventListener('input', markDirty);
     $('noteTitle').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('editor').focus(); } });
     var ed = $('editor');
