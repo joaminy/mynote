@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.4.0';
+  var APP_VERSION = '1.5.0';
   var MAX_FILE = 5 * 1024 * 1024; // 첨부 파일 1개 최대 5MB
   var TRASH_DAYS = 30;
 
@@ -107,7 +107,9 @@
     info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.5v.5"/>',
     edit: '<path d="M4.5 19.5l1-4.5L16 4.5l3.5 3.5L9 18.5z"/>',
     logout: '<path d="M14 4.5H6v15h8M10 12h10M16.5 8.5L20 12l-3.5 3.5"/>',
-    backup: '<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 14v5.5h14V14"/>'
+    backup: '<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 14v5.5h14V14"/>',
+    image: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.7"/><path d="M4 17l5-4.5 3.5 3 3-2.5 4.5 4"/>',
+    print: '<path d="M7 9V4h10v5M7 17H5a1.5 1.5 0 01-1.5-1.5v-5A1.5 1.5 0 015 9h14a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 0119 17h-2M7 14h10v6H7z"/>'
   };
   function ic(name, fill) {
     return '<svg class="ic" viewBox="0 0 24 24" fill="' + (fill ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + I[name] + '</svg>';
@@ -145,8 +147,18 @@
     var doc = new DOMParser().parseFromString('<div>' + (html || '') + '</div>', 'text/html');
     var root = doc.body.firstChild;
     if (!root) return '';
-    root.querySelectorAll('script,style,iframe,object,embed,link,meta,form,input,textarea,button,select,svg,math,img,video,audio,source,base').forEach(function (e) { e.remove(); });
+    root.querySelectorAll('script,style,iframe,object,embed,link,meta,form,input,textarea,button,select,svg,math,video,audio,source,base,picture').forEach(function (e) { e.remove(); });
+    root.querySelectorAll('img').forEach(function (img) {
+      var id = img.getAttribute('data-img') || '', ch = img.getAttribute('data-chunks') || '1', ty = img.getAttribute('data-type') || 'image/png';
+      if (!/^[a-z0-9_]{1,40}$/i.test(id)) { img.remove(); return; }
+      Array.prototype.slice.call(img.attributes).forEach(function (a) { img.removeAttribute(a.name); });
+      img.setAttribute('data-img', id);
+      img.setAttribute('data-chunks', /^\d{1,3}$/.test(ch) ? ch : '1');
+      img.setAttribute('data-type', /^image\/[a-z0-9.+-]{1,20}$/i.test(ty) ? ty : 'image/png');
+      img.className = 'note-img';
+    });
     root.querySelectorAll('*').forEach(function (e) {
+      if (e.nodeName === 'IMG') return;
       Array.prototype.slice.call(e.attributes).forEach(function (a) {
         var n = a.name.toLowerCase();
         if (n !== 'style' && n !== 'class') e.removeAttribute(a.name);
@@ -547,6 +559,7 @@
         chip.appendChild(el('span', null, f.name)); foot.appendChild(chip);
       }
       if (n.favorite) { var s = el('span', 'star'); s.innerHTML = ic('star', true); foot.appendChild(s); }
+      if (n.html && n.html.indexOf('data-img') !== -1) { var im = el('span'); im.innerHTML = ic('image'); im.title = '그림 포함'; foot.appendChild(im); }
       if (n.attachments && n.attachments.length) { var a = el('span'); a.innerHTML = ic('clip'); foot.appendChild(a); }
       foot.appendChild(el('span', 'date', fmtDate(n.updatedAt)));
       c.appendChild(foot);
@@ -729,14 +742,30 @@
       if (e.button !== 0 || (e.target.closest && e.target.closest(skip))) return;
       e.preventDefault();
       drag = { kind: kind, id: id, el: elm, x0: e.clientX, y0: e.clientY, active: false, mode: 'mouse' };
+      // 노트를 마우스로 꾹(0.5초) 누르고 있으면 삭제 메뉴
+      if (kind === 'note') drag.holdTimer = setTimeout(function () {
+        if (drag && drag.el === elm && !drag.active) { drag.pressed = true; showPressMenu(id, elm, drag.x0, drag.y0); }
+      }, 500);
     });
     elm.addEventListener('touchstart', function (e) {
       if (e.touches.length !== 1 || (e.target.closest && e.target.closest(skip))) return;
       var t = e.touches[0];
       drag = { kind: kind, id: id, el: elm, x0: t.clientX, y0: t.clientY, active: false, mode: 'touch' };
-      drag.timer = setTimeout(function () { if (drag && !drag.active) startDrag(drag.x0, drag.y0); }, 400);
+      drag.timer = setTimeout(function () {
+        if (!drag || drag.active) return;
+        if (kind === 'note') {
+          // 노트를 꾹 누르면 삭제 메뉴가 나오고, 그대로 손가락을 움직이면 끌기가 시작됨
+          drag.pressed = true;
+          try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) { /* 무시 */ }
+          showPressMenu(id, elm, drag.x0, drag.y0);
+        } else startDrag(drag.x0, drag.y0);
+      }, 400);
     }, { passive: true });
-    elm.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    elm.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      // 마우스 오른쪽 버튼으로도 같은 메뉴
+      if (kind === 'note' && !(drag && drag.active) && !(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) && !pressMenuNote) showPressMenu(id, elm, e.clientX, e.clientY);
+    });
   }
   function startDrag(x, y) {
     var label, icon;
@@ -813,7 +842,12 @@
   }
   function endDrag(x, y) {
     if (!drag) return;
-    if (!drag.active) { drag = null; return; }
+    if (!drag.active) {
+      clearTimeout(drag.holdTimer);
+      // 꾹 눌러 메뉴만 연 경우: 손을 떼도 노트가 열리지 않게 함
+      if (drag.pressed && drag.mode === 'mouse') { suppressClick = true; setTimeout(function () { suppressClick = false; }, 0); }
+      drag = null; return;
+    }
     moveDrag(x, y);
     var t = drag.target, kind = drag.kind, id = drag.id;
     // 마우스로 끈 뒤 생기는 클릭으로 노트·폴더가 열리지 않게 함 (터치는 touchend에서 이미 막음)
@@ -846,6 +880,7 @@
     if (!drag || drag.mode !== 'mouse') return;
     if (!drag.active) {
       if (Math.abs(e.clientX - drag.x0) + Math.abs(e.clientY - drag.y0) < 8) return;
+      clearTimeout(drag.holdTimer); hidePressMenu();
       startDrag(e.clientX, e.clientY);
       if (!drag) return;
     }
@@ -857,7 +892,10 @@
     var t = e.touches[0];
     if (!drag.active) {
       // 길게 누르기 전에 손가락을 움직이면 끌기가 아니라 화면 넘기기로 봄
-      if (Math.abs(t.clientX - drag.x0) + Math.abs(t.clientY - drag.y0) > 10) { clearTimeout(drag.timer); drag = null; }
+      if (Math.abs(t.clientX - drag.x0) + Math.abs(t.clientY - drag.y0) > 10) {
+        if (drag.pressed) { e.preventDefault(); hidePressMenu(); startDrag(t.clientX, t.clientY); return; }
+        clearTimeout(drag.timer); drag = null;
+      }
       return;
     }
     e.preventDefault();
@@ -867,7 +905,7 @@
     if (!drag || drag.mode !== 'touch') return;
     clearTimeout(drag.timer);
     if (drag.active) { e.preventDefault(); var t = e.changedTouches[0]; endDrag(t.clientX, t.clientY); }
-    else drag = null;
+    else { if (drag.pressed) e.preventDefault(); drag = null; }
   }, { passive: false });
   document.addEventListener('touchcancel', function () { if (drag) cleanupDrag(); });
 
@@ -1025,6 +1063,7 @@
     $('editorBox').classList.remove('hidden');
     $('noteTitle').value = n.title || '';
     $('editor').innerHTML = sanitize(n.html);
+    hydrateImages($('editor'));
     state.shownAt = n.updatedAt || 0;
     state.dirty = false;
     renderEditorMeta();
@@ -1067,7 +1106,7 @@
     hidePalette();
     renderList();
   }
-  function isEmptyNote(n) { return !(n.title || '').trim() && !(n.text || '').trim() && !(n.attachments && n.attachments.length); }
+  function isEmptyNote(n) { return !(n.title || '').trim() && !(n.text || '').trim() && !(n.attachments && n.attachments.length) && !(n.html && n.html.indexOf('data-img') !== -1); }
 
   var saveTimer = null;
   function markDirty() {
@@ -1128,6 +1167,7 @@
     if ((n.updatedAt || 0) > state.shownAt && !state.dirty && !editing) {
       $('noteTitle').value = n.title || '';
       $('editor').innerHTML = sanitize(n.html);
+      hydrateImages($('editor'));
       state.shownAt = n.updatedAt;
       updatePlaceholder();
     }
@@ -1164,7 +1204,7 @@
     openSheet('휴지통의 노트', body, [{ label: '닫기' }]);
   }
   function deleteForever(n) {
-    (n.attachments || []).forEach(function (a) { store.deleteFile(a); });
+    blobRefs(n).forEach(function (a) { store.deleteFile(a); });
     store.deleteNote(n.id);
   }
   function purgeOldTrash() {
@@ -1429,6 +1469,7 @@
       sw.appendChild(b);
     });
     body.appendChild(sw);
+    body.appendChild(menuItem('download', '파일로 저장 (텍스트·PDF·이미지 등)', function () { var cur = getCurrent(); closeSheet(); if (cur) { if (!state.notes.has(cur.id)) { toast('내용을 먼저 입력하세요.'); return; } exportMenu(cur.id); } }));
     body.appendChild(menuItem('info', '노트 정보', function () {
       closeSheet();
       var cur = getCurrent(); var info = el('div');
@@ -1520,7 +1561,7 @@
     toast('백업 파일을 만드는 중…');
     var notes = Array.from(state.notes.values()), files = {}, jobs = [];
     notes.forEach(function (n) {
-      (n.attachments || []).forEach(function (a) {
+      blobRefs(n).forEach(function (a) {
         jobs.push(store.getFile(a).then(blobToB64).then(function (b) { files[a.id] = b; }).catch(function () { /* 내려받지 못한 첨부는 건너뜀 */ }));
       });
     });
@@ -1532,7 +1573,7 @@
       a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
       var missing = jobs.length - Object.keys(files).length;
-      toast(missing ? '백업했습니다. (이 기기에 없는 첨부 ' + missing + '개는 빠짐)' : '백업 파일을 저장했습니다.', 4000);
+      toast(missing ? '백업했습니다. (이 기기에 없는 첨부·그림 ' + missing + '개는 빠짐)' : '백업 파일을 저장했습니다.', 4000);
     });
   }
   function importBackup(file) {
@@ -1544,7 +1585,7 @@
       (data.folders || []).forEach(function (f) { store.saveFolder(f); });
       var jobs = [];
       (data.notes || []).forEach(function (n) {
-        (n.attachments || []).forEach(function (a) {
+        blobRefs(n).forEach(function (a) {
           var b64 = data.files && data.files[a.id];
           if (!b64) return;
           var bin = atob(b64), u8 = new Uint8Array(bin.length);
@@ -1558,6 +1599,338 @@
       });
     };
     r.readAsText(file);
+  }
+
+  /* ================= 노트 안의 그림 (캡처 화면 붙여넣기) =================
+   * 그림은 노트 글 안에 <img data-img="아이디">로만 적고, 그림 자체는 첨부와 같은 저장소에 따로 보관합니다.
+   * (노트 하나의 크기 제한 1MiB를 넘지 않게 하려는 것)
+   */
+  var MAX_IMAGE = 5 * 1024 * 1024;
+  var imgCache = {};
+  function imgMeta(img) {
+    return { id: img.getAttribute('data-img'), chunks: Number(img.getAttribute('data-chunks')) || 1, type: img.getAttribute('data-type') || 'image/png' };
+  }
+  function noteImages(n) {
+    if (!n || !n.html || n.html.indexOf('data-img') === -1) return [];
+    var doc = new DOMParser().parseFromString('<div>' + n.html + '</div>', 'text/html');
+    return Array.prototype.map.call(doc.querySelectorAll('img[data-img]'), imgMeta).filter(function (m) { return m.id; });
+  }
+  /* 첨부 파일 + 노트 안 그림 (영구 삭제·백업에 씀) */
+  function blobRefs(n) { return (n.attachments || []).concat(noteImages(n)); }
+  function imageUrl(m) {
+    if (imgCache[m.id]) return Promise.resolve(imgCache[m.id]);
+    return store.getFile(m).then(function (blob) { var u = URL.createObjectURL(blob); imgCache[m.id] = u; return u; });
+  }
+  function hydrateImages(root) {
+    root.querySelectorAll('img[data-img]').forEach(function (img) {
+      var m = imgMeta(img); if (!m.id) return;
+      img.alt = '그림';
+      imageUrl(m).then(function (u) { img.src = u; img.classList.remove('img-missing'); })
+        .catch(function () { img.classList.add('img-missing'); img.alt = '그림을 불러오지 못했습니다 (인터넷 연결 후 다시 열어 주세요)'; });
+    });
+  }
+  function encodeCanvas(c, type, q) { return new Promise(function (res) { c.toBlob(function (b) { res(b); }, type, q); }); }
+  /* 큰 캡처 화면은 긴 변 1800px로 줄이고 압축해서 저장 공간을 아낌 */
+  function compressImage(file) {
+    return new Promise(function (resolve) {
+      if (file.size < 300 * 1024) { resolve(file); return; }
+      var url = URL.createObjectURL(file), im = new Image();
+      im.onload = function () {
+        var max = 1800, w = im.naturalWidth, h = im.naturalHeight, s = Math.min(1, max / Math.max(w, h));
+        var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+        var ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(im, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        encodeCanvas(c, 'image/webp', 0.86).then(function (b) {
+          if (b && b.type === 'image/webp') return b;
+          return encodeCanvas(c, 'image/jpeg', 0.86); // 사파리처럼 webp를 못 만드는 브라우저
+        }).then(function (b) { resolve(b && b.size < file.size ? b : file); });
+      };
+      im.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+      im.src = url;
+    });
+  }
+  function insertImages(files) {
+    var n = getCurrent(); if (!n) return;
+    var list = Array.prototype.slice.call(files).filter(function (f) { return /^image\//.test(f.type); });
+    if (!list.length) return;
+    restoreRange();
+    toast('그림을 넣는 중…');
+    var chain = Promise.resolve();
+    list.forEach(function (file) {
+      chain = chain.then(function () { return compressImage(file); }).then(function (blob) {
+        if (blob.size > MAX_IMAGE) { toast('5MB가 넘는 그림은 넣을 수 없습니다.'); return; }
+        var id = 'i_' + uid();
+        return store.putFile(id, blob).then(function (chunks) {
+          var img = document.createElement('img');
+          img.setAttribute('data-img', id); img.setAttribute('data-chunks', String(chunks)); img.setAttribute('data-type', blob.type || 'image/png');
+          img.className = 'note-img'; img.alt = '그림';
+          var u = URL.createObjectURL(blob); imgCache[id] = u; img.src = u;
+          restoreRange();
+          var sel = window.getSelection(), r = sel.getRangeAt(0);
+          r.deleteContents();
+          var after = document.createElement('div'); after.appendChild(document.createElement('br'));
+          r.insertNode(img);
+          // 그림 뒤에 빈 줄을 두어 바로 이어서 글을 쓸 수 있게 함
+          if (!img.nextSibling) img.parentNode.insertBefore(after, null);
+          var nr = document.createRange(); nr.setStartAfter(img); nr.collapse(true);
+          sel.removeAllRanges(); sel.addRange(nr); savedRange = nr.cloneRange();
+          markDirty();
+        });
+      });
+    });
+    chain.then(function () { toast('그림을 넣었습니다.'); }).catch(function (e) { console.error(e); toast('그림을 넣지 못했습니다.'); });
+  }
+
+  /* ================= 노트를 꾹 눌렀을 때 나오는 메뉴 ================= */
+  var pressMenuNote = null, swallowClickUntil = 0;
+  function showPressMenu(noteId, cardEl, x, y) {
+    var n = state.notes.get(noteId); if (!n || n.trashed) return;
+    hidePressMenu();
+    pressMenuNote = { id: noteId, el: cardEl };
+    cardEl.classList.add('pressed');
+    var m = $('pressMenu'); m.textContent = '';
+    m.appendChild(el('div', 'pm-title', noteLabel(n)));
+    function item(icon, label, run, danger) {
+      var b = el('button', 'pm-item' + (danger ? ' danger' : '')); b.innerHTML = ic(icon, icon === 'star' && n.favorite); b.appendChild(el('span', null, label));
+      b.addEventListener('click', function (e) { e.stopPropagation(); hidePressMenu(); run(); });
+      m.appendChild(b);
+    }
+    item('trash', '삭제', function () { trashNoteById(noteId); }, true);
+    item('star', n.favorite ? '즐겨찾기 해제' : '즐겨찾기', function () {
+      var cur = state.notes.get(noteId); if (!cur) return;
+      if (state.currentId === noteId) patchCurrent({ favorite: !cur.favorite }); else saveNoteQuiet(noteId, { favorite: !cur.favorite });
+      renderAll();
+    });
+    item('download', '파일로 저장', function () { exportMenu(noteId); });
+    m.classList.remove('hidden');
+    var w = m.offsetWidth, h = m.offsetHeight;
+    var left = Math.min(Math.max(8, x - w / 2), window.innerWidth - w - 8);
+    var top = y + 14; if (top + h > window.innerHeight - 8) top = Math.max(8, y - h - 14);
+    m.style.left = left + 'px'; m.style.top = top + 'px';
+  }
+  function hidePressMenu() {
+    if (pressMenuNote && pressMenuNote.el) pressMenuNote.el.classList.remove('pressed');
+    pressMenuNote = null;
+    $('pressMenu').classList.add('hidden');
+  }
+  function trashNoteById(id) {
+    var n = state.notes.get(id); if (!n) return;
+    if (state.currentId === id) { flushSave(false); closeEditorOrBack(); }
+    saveNoteQuiet(id, { trashed: true, trashedAt: Date.now() });
+    renderAll();
+    toast('"' + noteLabel(n) + '"을(를) 휴지통으로 옮겼습니다.', 5000, '되돌리기', function () {
+      saveNoteQuiet(id, { trashed: false, trashedAt: null }); renderAll(); toast('되돌렸습니다.');
+    });
+  }
+  // 메뉴 바깥을 누르면 닫기 (그 누름으로 다른 노트가 열리지는 않게 함)
+  document.addEventListener('pointerdown', function (e) {
+    if (!pressMenuNote) return;
+    if (e.target.closest && e.target.closest('#pressMenu')) return;
+    hidePressMenu(); swallowClickUntil = Date.now() + 600;
+  }, true);
+  document.addEventListener('click', function (e) {
+    if (Date.now() < swallowClickUntil && !(e.target.closest && e.target.closest('#pressMenu'))) { swallowClickUntil = 0; e.stopPropagation(); e.preventDefault(); }
+  }, true);
+
+  /* ================= 노트를 파일로 저장 (텍스트·PDF·이미지·웹 문서·인쇄) ================= */
+  var LIBS = {
+    html2canvas: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+    jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+  };
+  var libLoads = {};
+  function loadLib(name) {
+    if (libLoads[name]) return libLoads[name];
+    libLoads[name] = new Promise(function (res, rej) {
+      var s = document.createElement('script'); s.src = LIBS[name]; s.async = true;
+      s.onload = res; s.onerror = function () { delete libLoads[name]; rej(new Error('lib')); };
+      document.head.appendChild(s);
+    });
+    return libLoads[name];
+  }
+  function exportNote(id) {
+    if (state.currentId === id) flushSave(false);
+    return state.notes.get(id) || (state.draft && state.draft.id === id ? state.draft : null);
+  }
+  function fileBase(n) {
+    var t = (n.title || (n.text || '').split('\n')[0] || '노트').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    return t || '노트';
+  }
+  function isIOS() { return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function saveBlob(blob, name) {
+    function download() {
+      var url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    }
+    // 아이폰은 '공유 → 파일에 저장'이 더 잘 되므로 공유 창을 먼저 시도
+    if (isIOS() && navigator.canShare) {
+      try {
+        var f = new File([blob], name, { type: blob.type });
+        if (navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: name }).catch(function (e) { if (e && e.name !== 'AbortError') download(); }); return; }
+      } catch (e) { /* 아래 방법으로 */ }
+    }
+    download();
+  }
+  /* 글자만 뽑기: 체크리스트는 ☐/☑, 글머리는 •, 번호는 1. 2. … */
+  function htmlToText(html) {
+    var doc = new DOMParser().parseFromString('<div>' + (html || '') + '</div>', 'text/html');
+    var out = [];
+    function walk(node, prefix) {
+      node.childNodes.forEach(function (c) {
+        if (c.nodeType === 3) { out.push(c.nodeValue.replace(/​/g, '')); return; }
+        if (c.nodeType !== 1) return;
+        var tag = c.nodeName;
+        if (tag === 'BR') { out.push('\n'); return; }
+        if (tag === 'IMG') { out.push('\n[그림]\n'); return; }
+        if (tag === 'UL' || tag === 'OL') {
+          var i = 0;
+          c.childNodes.forEach(function (li) {
+            if (li.nodeName !== 'LI') return; i++;
+            var mark = tag === 'OL' ? i + '. ' : c.classList.contains('checklist') ? (li.classList.contains('done') ? '☑ ' : '☐ ') : '• ';
+            out.push('\n' + prefix + mark); walk(li, prefix + '   ');
+          });
+          out.push('\n'); return;
+        }
+        var block = /^(DIV|P|H[1-6]|BLOCKQUOTE|PRE|LI)$/.test(tag);
+        if (block) out.push('\n');
+        walk(c, prefix);
+        if (block) out.push('\n');
+      });
+    }
+    walk(doc.body.firstChild, '');
+    return out.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  function blobToDataUrl(blob) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsDataURL(blob); }); }
+  var EXPORT_BG = { '': '#ffffff', yellow: '#FFF4CC', green: '#E2F4E4', blue: '#E0ECFF', pink: '#FCE3EC', purple: '#EDE5FF', gray: '#ECECEC' };
+  /* 저장용 화면 만들기 (항상 밝은 화면 색으로) */
+  function buildExportPage(n, opts) {
+    opts = opts || {};
+    var page = el('div', 'export-page');
+    page.style.background = EXPORT_BG[n.color || ''] || '#ffffff';
+    if (opts.noVPad) { page.style.paddingTop = '0'; page.style.paddingBottom = '0'; }
+    page.appendChild(el('h1', 'export-title', n.title || (n.text || '').split('\n')[0] || '제목 없음'));
+    var f = n.folderId && state.folders.get(n.folderId);
+    page.appendChild(el('div', 'export-meta', (f ? pathName(f) + ' · ' : '') + '수정 ' + fmtDate(n.updatedAt, true)));
+    var body = el('div', 'editor export-body'); body.innerHTML = sanitize(n.html);
+    page.appendChild(body);
+    var imgs = Array.prototype.slice.call(body.querySelectorAll('img[data-img]'));
+    return Promise.all(imgs.map(function (img) {
+      var m = imgMeta(img);
+      return store.getFile(m).then(function (blob) {
+        return opts.dataUrls ? blobToDataUrl(blob) : (imgCache[m.id] || (imgCache[m.id] = URL.createObjectURL(blob)));
+      }).then(function (src) {
+        return new Promise(function (res) { img.onload = res; img.onerror = res; img.src = src; });
+      }).catch(function () { img.replaceWith(el('div', 'export-missing', '[그림을 불러오지 못했습니다]')); });
+    })).then(function () { return page; });
+  }
+  function mountOffscreen(page) {
+    var holder = el('div', 'export-holder'); holder.appendChild(page); document.body.appendChild(holder);
+    return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function () { return holder; });
+  }
+  function renderCanvas(page, holder) {
+    return loadLib('html2canvas').then(function () {
+      var h = page.scrollHeight, w = page.offsetWidth;
+      // 아주 긴 노트는 휴대폰 메모리 한도를 넘지 않게 선명도를 낮춤
+      var scale = Math.max(0.6, Math.min(2, 30000 / h, Math.sqrt(16000000 / (w * h))));
+      return window.html2canvas(page, { scale: scale, backgroundColor: page.style.background || '#ffffff', useCORS: true, logging: false })
+        .then(function (canvas) { return { canvas: canvas, scale: scale }; });
+    });
+  }
+  function exportTxt(n) {
+    var text = (n.title ? n.title + '\n\n' : '') + htmlToText(n.html);
+    saveBlob(new Blob(['﻿' + text.replace(/\n/g, '\r\n')], { type: 'text/plain;charset=utf-8' }), fileBase(n) + '.txt');
+    return Promise.resolve();
+  }
+  function exportHtml(n) {
+    return buildExportPage(n, { dataUrls: true }).then(function (page) {
+      var css = 'body{margin:0;background:#f4f4f2;font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#1f1f1f}' +
+        '.export-page{max-width:794px;margin:24px auto;padding:48px 56px;box-sizing:border-box;box-shadow:0 1px 6px rgba(0,0,0,.08)}' +
+        '.export-title{font-size:26px;margin:0 0 6px}.export-meta{font-size:13px;color:#777;margin-bottom:24px}' +
+        '.export-body{font-size:16px;line-height:1.7;word-break:break-word}.export-body img{max-width:100%;height:auto;display:block;margin:8px 0;border-radius:8px}' +
+        'ul.checklist{list-style:none;padding-left:4px}ul.checklist>li{position:relative;padding-left:28px}' +
+        'ul.checklist>li::before{content:"☐";position:absolute;left:2px}ul.checklist>li.done{color:#888;text-decoration:line-through}ul.checklist>li.done::before{content:"☑"}';
+      var fonts = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&family=Nanum+Gothic:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Dodum&family=Nanum+Pen+Script&family=Gaegu:wght@400;700&family=Gowun+Batang:wght@400;700&family=Do+Hyeon&family=Jua&family=Nanum+Brush+Script&family=Hi+Melody&display=swap">';
+      var title = (n.title || '노트').replace(/[<&]/g, function (c) { return c === '<' ? '&lt;' : '&amp;'; });
+      var html = '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + title + '</title>' + fonts + '<style>' + css + '</style></head><body>' +
+        page.outerHTML.replace(/var\(--ink\)/g, '#1f1f1f') + '</body></html>';
+      saveBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), fileBase(n) + '.html');
+    });
+  }
+  function exportPng(n) {
+    var holder;
+    return buildExportPage(n).then(mountOffscreen).then(function (h) { holder = h; return renderCanvas(h.firstChild, h); })
+      .then(function (r) { return encodeCanvas(r.canvas, 'image/png'); })
+      .then(function (blob) { saveBlob(blob, fileBase(n) + '.png'); })
+      .finally(function () { if (holder) holder.remove(); });
+  }
+  function exportPdf(n) {
+    var holder;
+    return Promise.all([buildExportPage(n, { noVPad: true }).then(mountOffscreen), loadLib('jspdf')]).then(function (rs) {
+      holder = rs[0]; var page = holder.firstChild;
+      var W = page.offsetWidth, usable = Math.floor(W * 297 / 210) - 2 * 48; // A4 한 장에 들어가는 높이 (위아래 여백 48px)
+      // 줄 중간이 잘리지 않도록 문단·목록 항목·그림의 경계에서 쪽을 나눔
+      var top0 = page.getBoundingClientRect().top, bounds = [];
+      page.querySelectorAll('.export-title, .export-meta, .export-body > *, .export-body li, .export-body img').forEach(function (e) {
+        var r = e.getBoundingClientRect(); bounds.push(Math.round(r.bottom - top0));
+      });
+      var total = page.scrollHeight; bounds.push(total);
+      bounds = bounds.filter(function (b, i, a) { return b > 0 && a.indexOf(b) === i; }).sort(function (a, b) { return a - b; });
+      var cuts = [], start = 0;
+      while (start < total - 1) {
+        var limit = start + usable, best = 0;
+        bounds.forEach(function (b) { if (b > start && b <= limit) best = b; });
+        if (!best) best = Math.min(limit, total);
+        cuts.push([start, best]); start = best;
+      }
+      return renderCanvas(page, holder).then(function (r) {
+        var pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+        var mmPerPx = 210 / W, bg = page.style.background || '#ffffff';
+        cuts.forEach(function (c, i) {
+          if (i) pdf.addPage();
+          var hPx = c[1] - c[0];
+          var slice = document.createElement('canvas');
+          slice.width = r.canvas.width; slice.height = Math.max(1, Math.round(hPx * r.scale));
+          var ctx = slice.getContext('2d'); ctx.fillStyle = bg; ctx.fillRect(0, 0, slice.width, slice.height);
+          ctx.drawImage(r.canvas, 0, Math.round(c[0] * r.scale), slice.width, slice.height, 0, 0, slice.width, slice.height);
+          if (bg !== '#ffffff') { pdf.setFillColor(bg); pdf.rect(0, 0, 210, 297, 'F'); }
+          pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 48 * mmPerPx, 210, hPx * mmPerPx);
+        });
+        saveBlob(pdf.output('blob'), fileBase(n) + '.pdf');
+      });
+    }).finally(function () { if (holder) holder.remove(); });
+  }
+  function exportPrint(n) {
+    return buildExportPage(n).then(function (page) {
+      var area = $('printArea'); area.textContent = ''; area.appendChild(page);
+      return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function () {
+        var done = function () { area.textContent = ''; window.removeEventListener('afterprint', done); };
+        window.addEventListener('afterprint', done);
+        window.print();
+      });
+    });
+  }
+  function exportMenu(id) {
+    var n = exportNote(id); if (!n) return;
+    var body = el('div');
+    body.appendChild(el('p', 'set-note', '"' + noteLabel(n) + '"을(를) 어떤 파일로 저장할까요?'));
+    function run(fn, msg) {
+      return function () {
+        closeSheet(); toast('파일을 만드는 중…', 8000);
+        var note = exportNote(id);
+        Promise.resolve().then(function () { return fn(note); })
+          .then(function () { toast(msg || '파일을 저장했습니다. (브라우저의 다운로드 폴더)', 4000); })
+          .catch(function (e) {
+            console.error(e);
+            toast(e && e.message === 'lib' ? '처음 한 번은 인터넷에 연결된 상태에서 저장해 주세요. (PDF·이미지 저장 도구를 내려받아야 합니다)' : '파일을 만들지 못했습니다.', 6000);
+          });
+      };
+    }
+    body.appendChild(menuItem('file', '텍스트 파일 (.txt) — 글자만', run(exportTxt)));
+    body.appendChild(menuItem('file', 'PDF 파일 (.pdf) — 보이는 그대로, A4', run(exportPdf)));
+    body.appendChild(menuItem('image', '이미지 파일 (.png) — 노트 전체를 한 장으로', run(exportPng)));
+    body.appendChild(menuItem('open', '웹 문서 (.html) — 서식·그림 포함, 브라우저·워드에서 열림', run(exportHtml)));
+    body.appendChild(menuItem('print', '인쇄 (프린터 또는 "PDF로 저장" — 글자 선택 가능)', run(exportPrint, '인쇄 창을 열었습니다.')));
+    openSheet('파일로 저장', body, [{ label: '닫기' }]);
   }
 
   /* ================= 공용 팝업 ================= */
@@ -1591,6 +1964,7 @@
     $('colorBtn').innerHTML = ic('color').replace('</svg>', '<rect id="colorBar" x="5" y="18" width="14" height="3" rx="1" fill="#E53935" stroke="none"/></svg>');
     $('upBtn').innerHTML = ic('back');
     $('hiliteBtn').innerHTML = ic('hilite').replace('</svg>', '<rect x="4" y="19" width="16" height="3" rx="1" fill="#FFD600" stroke="none"/></svg>');
+    $('imgBtn').innerHTML = ic('image');
     $('checkBtn').innerHTML = ic('check'); $('ulBtn').innerHTML = ic('ul'); $('clearBtn').innerHTML = ic('clear');
     var fsel = $('fontSel');
     var f0 = el('option', null, '글꼴'); f0.value = ''; fsel.appendChild(f0);
@@ -1674,14 +2048,27 @@
     ed.addEventListener('keydown', function () { setTimeout(rememberRange, 0); });
     ed.addEventListener('paste', function (e) {
       e.preventDefault();
-      var files = e.clipboardData && e.clipboardData.files;
-      if (files && files.length) { addFiles(files); return; }
+      var cd = e.clipboardData, files = cd ? Array.prototype.slice.call(cd.files || []) : [];
+      if (!files.length && cd && cd.items) files = Array.prototype.slice.call(cd.items).filter(function (it) { return it.kind === 'file'; }).map(function (it) { return it.getAsFile(); }).filter(Boolean);
+      if (files.length) {
+        var imgs = files.filter(function (f) { return /^image\//.test(f.type); }), others = files.filter(function (f) { return !/^image\//.test(f.type); });
+        if (imgs.length) insertImages(imgs);   // 캡처 화면·그림은 노트 안에 바로 보이게
+        if (others.length) addFiles(others);   // 그 밖의 파일은 첨부
+        return;
+      }
       var text = (e.clipboardData || window.clipboardData).getData('text/plain');
       document.execCommand('insertText', false, text);
     });
     ed.addEventListener('drop', function (e) {
       var dt = e.dataTransfer; if (!dt) return;
-      if (dt.files && dt.files.length) { e.preventDefault(); addFiles(dt.files); return; }
+      if (dt.files && dt.files.length) {
+        e.preventDefault();
+        var fl = Array.prototype.slice.call(dt.files);
+        var imgs = fl.filter(function (f) { return /^image\//.test(f.type); }), others = fl.filter(function (f) { return !/^image\//.test(f.type); });
+        if (imgs.length) insertImages(imgs);
+        if (others.length) addFiles(others);
+        return;
+      }
       if (Array.prototype.indexOf.call(dt.types || [], 'text/html') !== -1) { e.preventDefault(); ed.focus(); document.execCommand('insertText', false, dt.getData('text/plain')); }
     });
     ed.addEventListener('click', function (e) {
@@ -1713,6 +2100,8 @@
     $('colorBtn').addEventListener('click', function () { showPalette('color'); });
     $('hiliteBtn').addEventListener('click', function () { showPalette('hilite'); });
     $('checkBtn').addEventListener('click', toggleChecklist);
+    $('imgBtn').addEventListener('click', function () { $('imgInput').click(); });
+    $('imgInput').addEventListener('change', function () { insertImages(this.files); this.value = ''; });
     $('ulBtn').addEventListener('click', toggleBullets);
     $('clearBtn').addEventListener('click', function () {
       restoreRange();
@@ -1733,6 +2122,7 @@
     // 키보드: Esc
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && drag) { cleanupDrag(); return; }
+      if (e.key === 'Escape' && pressMenuNote) { hidePressMenu(); return; }
       if (e.key === 'Escape') {
         if (!$('sheetWrap').classList.contains('hidden')) closeSheet();
         else if (!$('palette').classList.contains('hidden')) hidePalette();
@@ -1747,7 +2137,8 @@
     // 앱을 닫거나 다른 앱으로 넘어갈 때 바로 저장
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flushSave(false); });
     window.addEventListener('pagehide', function () { flushSave(false); });
-    window.addEventListener('resize', function () { if (isWide()) closeDrawer(); });
+    window.addEventListener('resize', function () { if (isWide()) closeDrawer(); hidePressMenu(); });
+    $('listScroll').addEventListener('scroll', function () { if (pressMenuNote && !(drag && drag.pressed)) hidePressMenu(); });
   }
 
   /* ================= 오프라인용 서비스 워커 ================= */

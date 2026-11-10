@@ -119,6 +119,7 @@
         <button class="tb" data-cmd="justifyCenter" title="가운데 정렬" aria-label="가운데 정렬"></button>
         <button class="tb" data-cmd="justifyRight" title="오른쪽 정렬" aria-label="오른쪽 정렬"></button>
         <span class="tb-sep"></span>
+        <button class="tb" id="imgBtn" title="그림 넣기" aria-label="그림 넣기"></button>
         <button class="tb" id="checkBtn" title="체크리스트" aria-label="체크리스트"></button>
         <button class="tb" id="ulBtn" title="글머리 기호" aria-label="글머리 기호"></button>
         <button class="tb" data-cmd="insertOrderedList" title="번호 매기기" aria-label="번호 매기기"></button>
@@ -126,6 +127,7 @@
       </div>
       <div id="palette" class="palette hidden"></div>
       <input type="file" id="fileInput" multiple hidden>
+      <input type="file" id="imgInput" accept="image/*" multiple hidden>
     </div>
   </section>
 </div>
@@ -139,6 +141,8 @@
   </div>
 </div>
 <div id="dropTray" class="drop-tray hidden" aria-live="polite"></div>
+<div id="pressMenu" class="press-menu hidden" role="menu"></div>
+<div id="printArea" class="print-area"></div>
 <div id="toast" class="toast hidden" role="status"></div>
 <input type="file" id="importInput" accept=".json,application/json" hidden>
 

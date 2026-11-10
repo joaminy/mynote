@@ -2,7 +2,7 @@
  * 인터넷이 끊겨도 앱 화면이 열리도록 앱 파일을 기기에 저장해 둡니다.
  * 이 파일은 고칠 필요가 없습니다.
  */
-var CACHE = 'mynote-v1';
+var CACHE = 'mynote-v2';
 var SDK = '12.19.0';
 var SHELL = [
   './', './index.html', './style.css', './app.js', './store.js', './firebase-config.js',
@@ -11,7 +11,10 @@ var SHELL = [
 var REMOTE = [
   'https://www.gstatic.com/firebasejs/' + SDK + '/firebase-app.js',
   'https://www.gstatic.com/firebasejs/' + SDK + '/firebase-auth.js',
-  'https://www.gstatic.com/firebasejs/' + SDK + '/firebase-firestore.js'
+  'https://www.gstatic.com/firebasejs/' + SDK + '/firebase-firestore.js',
+  // 노트를 PDF·이미지로 저장할 때 쓰는 도구 (인터넷 없이도 저장되도록 미리 받아 둠)
+  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
 ];
 
 self.addEventListener('install', function (event) {
@@ -66,6 +69,7 @@ self.addEventListener('fetch', function (event) {
   var url = new URL(req.url);
   if (url.origin === self.location.origin) { event.respondWith(networkFirst(req)); return; }
   if ((url.hostname === 'www.gstatic.com' && url.pathname.indexOf('/firebasejs/') === 0) ||
+      (url.hostname === 'cdnjs.cloudflare.com' && url.pathname.indexOf('/ajax/libs/') === 0) ||
       url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
     event.respondWith(cacheFirst(req));
   }
